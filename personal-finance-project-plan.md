@@ -219,6 +219,22 @@ Automatically calculate:
 - Liability ratio
 - Asset allocation
 
+The balance sheet should present all monetary values in TWD. Assets should be
+split into liquid assets, liquid investments, and other assets, with line items
+and section totals. Liabilities should be split into short-term and long-term
+liabilities, also with line items and group totals. This is separate from the
+portfolio view, where prices, costs, market values, and performance remain in
+the security's original currency.
+
+The balance-sheet indicators are defined as follows:
+
+- Free cash flow = net worth - fixed assets
+- Cash ratio = liquid assets - total liabilities
+- Equity multiplier = total assets / net worth
+- Net-worth growth rate = (current net worth - previous net worth) / previous net worth
+
+Fixed assets are represented by non-liquid assets in the “other assets” group.
+
 ### 5.4 Investment Portfolio
 
 Each holding should support at least:
@@ -235,6 +251,20 @@ Each holding should support at least:
 - Return rate
 - Portfolio weight
 
+The MVP should also support recurring investment plans for stocks and ETFs.
+When a plan is due, the user should be able to open a pop-up simulated
+execution record and enter the actual invested amount, shares purchased,
+purchase price, and execution date. The user must confirm the record before it
+updates the holding. Confirmed records must be retained for review and rollback.
+
+Investment amounts normally include transaction fees; if fee data is
+unavailable, fees may be ignored. Dividends are entered manually in the
+security's original currency and added to total gain/loss, while capital
+gain/loss remains market value minus cost basis. Stock splits may be represented
+by adjusting shares while keeping total cost unchanged, then recalculating
+average cost. Full transaction-level portfolio accounting is not required for
+the MVP.
+
 ### 5.5 Market Data
 
 Where technically and legally practical, automatically retrieve:
@@ -245,6 +275,13 @@ Where technically and legally practical, automatically retrieve:
 
 Market-data providers should remain replaceable rather than tightly
 coupled to the portfolio model.
+
+For the MVP, follow the StockDock approach and use Yahoo Finance for Taiwan
+securities, U.S. securities, and FX. Use Yahoo Finance WebSocket for live price
+updates where available, and REST endpoints for exchange rates and fallback
+refreshes. Keep this behind a replaceable provider interface. If the project
+later becomes a commercial product, review Yahoo's current terms and market-data
+licensing before release.
 
 ### 5.6 Historical Snapshots
 
@@ -302,7 +339,10 @@ useful.
 
 ## 7. Initial Data Model
 
-The exact schema should evolve during implementation.
+The exact schema should evolve during implementation. Conceptually, holdings
+are a type of asset rather than a completely separate financial domain. The
+implementation may use one shared asset record with investment-specific
+details, provided portfolio calculations remain clear.
 
 ### Accounts / Assets
 
@@ -341,6 +381,37 @@ Potential fields:
 - `shares`
 - `average_cost`
 
+### Recurring Investment Plans
+
+Potential fields:
+
+- `id`
+- `holding_id` or security reference
+- `amount`
+- `currency`
+- `frequency`
+- `execution_day`
+- `start_date`
+- `end_date`
+- `is_active`
+- `notes`
+
+Whether confirmed simulated execution records require a separate table is
+still an implementation detail; the records must nevertheless be persisted.
+
+### Recurring Investment Executions
+
+Potential fields:
+
+- `id`
+- `recurring_investment_id`
+- `execution_date`
+- `invested_amount`
+- `currency`
+- `shares_purchased`
+- `purchase_price`
+- `status`
+
 ### Market Prices
 
 Potential fields:
@@ -373,6 +444,10 @@ Potential fields:
 
 The schema should be normalized only where doing so improves correctness
 and maintainability. Premature complexity should be avoided.
+
+Taiwan securities are valued in TWD without FX conversion. U.S. securities are
+valued in USD and converted to TWD for summaries. Dates and timestamps use
+Taiwan time (`Asia/Taipei`).
 
 ------------------------------------------------------------------------
 
@@ -601,14 +676,20 @@ Potential responsibilities:
 - [ ] Implement portfolio allocation
 - [ ] Implement TWD reporting
 - [ ] Implement FX conversion
+- [ ] Define recurring investment plan model
+- [ ] Implement simulated recurring-investment execution flow
+- [ ] Define manual dividend handling
+- [ ] Define stock-split adjustment behavior
 
 ### Stage 4 --- Market Data
 
-- [ ] Research market-data providers
+- [x] Select Yahoo Finance as the MVP provider, following the StockDock approach
 - [ ] Define provider interface
 - [ ] Add Taiwan security price retrieval
 - [ ] Add U.S. security price retrieval
 - [ ] Add FX retrieval
+- [ ] Add WebSocket price updates where available
+- [ ] Add REST fallback refresh
 - [ ] Add caching
 - [ ] Add error handling and fallback behavior
 
@@ -756,15 +837,15 @@ requirements.
 
 ## 16. Current Next Steps
 
-1. Create the `personal-finance` GitHub repository.
-2. Commit this project plan.
-3. Create a minimal README describing the vision.
-4. Convert the existing Google Sheets workflow into written functional
-    requirements.
-5. Define the first data model.
-6. Create a small set of GitHub Issues for Stage 1.
-7. Continue learning the underlying engineering skills and implement
-    features incrementally.
+1. Document the current Google Sheets workflow and exact formulas.
+2. Confirm the default asset and liability categories.
+3. Define the first data model, including persisted recurring-investment
+   execution records.
+4. Create a small set of GitHub Issues for Stage 1 and Stage 2.
+5. Build the SQLite core for assets, liabilities, and net-worth calculation.
+6. Add tests before implementing the portfolio and Yahoo Finance integration.
+7. Implement the Yahoo Finance provider behind the replaceable provider
+   interface.
 
 There is no requirement to rush toward a finished application.
 
