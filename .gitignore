@@ -157,6 +157,13 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local SQLite data
+data/*.db
+data/*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -218,3 +225,4 @@ __marimo__/
 .streamlit/secrets.toml
 
 .DS_Store
+*.db
