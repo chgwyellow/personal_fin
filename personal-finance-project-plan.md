@@ -567,11 +567,11 @@ Potential responsibilities:
 - [x] Define high-level scope
 - [x] Decide on local-first direction
 - [x] Identify TWD support as a key requirement
-- [ ] Create GitHub repository
+- [x] Create GitHub repository
 - [ ] Write initial README
-- [ ] Add project plan
+- [x] Add project plan
 - [ ] Define MVP issues
-- [ ] Decide project license
+- [x] Decide project license
 
 ### Stage 1 --- Requirements
 
