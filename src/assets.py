@@ -118,10 +118,33 @@ def update_asset(asset_id, currency, value):
     return updated
 
 
-def delete_asset():
-    """Delete or deactivate an existing asset in the database.
+def delete_asset(asset_id):
+    """Deactivate an existing asset without removing its database record.
 
-    This function is not implemented yet. Its future implementation should
-    receive an asset ID and apply the project's deletion policy.
+    Args:
+        asset_id: The unique ID of the asset to deactivate.
+
+    Returns:
+        ``True`` if an active asset was found and deactivated; otherwise,
+        ``False``.
+
+    Deactivation sets ``is_active`` to ``0`` and preserves the asset's
+    historical record. The asset will no longer be returned by
+    :func:`list_assets`.
     """
-    pass
+    connection = connect_to_database()
+
+    cursor = connection.execute(
+        """
+        UPDATE assets
+        SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND is_active = 1
+        """,
+        (asset_id,),
+    )
+
+    connection.commit()
+    deleted = cursor.rowcount > 0
+    connection.close()
+
+    return deleted
