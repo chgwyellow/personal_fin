@@ -87,13 +87,35 @@ def list_assets():
     return assets
 
 
-def update_asset():
-    """Update an existing asset in the database.
+def update_asset(asset_id, currency, value):
+    """Update the currency and value of an existing asset.
 
-    This function is not implemented yet. Its future implementation should
-    receive an asset ID and the fields to update.
+    Args:
+        asset_id: The unique ID of the asset to update.
+        currency: The new three-letter currency code.
+        value: The new value in the asset's original currency.
+
+    Returns:
+        ``True`` if an asset was found and updated; otherwise, ``False``.
+
+    The function also updates the asset's ``updated_at`` timestamp.
     """
-    pass
+    connection = connect_to_database()
+
+    cursor = connection.execute(
+        """
+        UPDATE assets
+        SET currency = ?, value = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (currency, value, asset_id),
+    )
+
+    connection.commit()
+    updated = cursor.rowcount > 0
+    connection.close()
+
+    return updated
 
 
 def delete_asset():
