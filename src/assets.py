@@ -2,7 +2,7 @@ from src.database import connect_to_database
 
 
 def create_asset(name, asset_group, category, currency, value):
-    """Add one asset record to the local SQLite database.
+    """Create one asset record in the local SQLite database.
 
     Args:
         name: User-facing name of the asset.
@@ -10,6 +10,9 @@ def create_asset(name, asset_group, category, currency, value):
         category: More specific category, such as ``bank_account``.
         currency: Three-letter currency code, such as ``TWD`` or ``USD``.
         value: Current value in the asset's original currency.
+
+    Returns:
+        The ID of the newly created asset.
 
     The function commits the new record and closes the database connection
     after the insert is complete.
@@ -62,17 +65,33 @@ def get_asset(asset_id):
 def list_assets():
     """Retrieve all active assets from the database.
 
-    This function is not implemented yet. Its future implementation should
-    return the asset records in a collection that the caller can iterate over.
+    Returns:
+        A list of active asset records. If no active assets exist, an empty
+        list is returned.
     """
-    pass
+    connection = connect_to_database()
+
+    cursor = connection.execute(
+        """
+        SELECT id, name, asset_group, category, currency, value
+        FROM assets
+        WHERE is_active = 1
+        ORDER BY id;
+        """
+    )
+
+    assets = cursor.fetchall()  # get all results
+
+    connection.close()
+
+    return assets
 
 
 def update_asset():
     """Update an existing asset in the database.
 
     This function is not implemented yet. Its future implementation should
-    receive an asset identifier and the fields to update.
+    receive an asset ID and the fields to update.
     """
     pass
 
@@ -81,6 +100,6 @@ def delete_asset():
     """Delete or deactivate an existing asset in the database.
 
     This function is not implemented yet. Its future implementation should
-    receive an asset identifier and apply the project's deletion policy.
+    receive an asset ID and apply the project's deletion policy.
     """
     pass
