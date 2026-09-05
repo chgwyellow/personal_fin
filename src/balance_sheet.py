@@ -205,3 +205,51 @@ def calculate_net_worth_growth_rate(
         return None
 
     return (current_net_worth - previous_net_worth) / abs(previous_net_worth)
+
+
+def get_asset_group_ratio_ntd(asset_group: str) -> float | None:
+    """Calculate an asset group's share of total active NTD assets.
+
+    Args:
+        asset_group: The group to measure, such as ``liquid_asset``,
+            ``liquid_investment``, or ``other_asset``.
+
+    Returns:
+        The group's NTD value divided by total active NTD assets.
+        Returns None when total assets are zero.
+        Returns zero if the group has no assets but total assets are positive.
+        Inactive and foreign-currency assets are excluded.
+    """
+    total_assets = get_total_assets_ntd()
+
+    if total_assets == 0:
+        return None
+
+    grouped_asset = get_assets_total_by_group_ntd(asset_group)
+
+    return grouped_asset / total_assets
+
+
+def get_liability_group_ratio_ntd(
+    liability_group: str,
+) -> float | None:
+    """Calculate a liability group's share of total NTD liabilities.
+
+    Args:
+        liability_group: The group to measure, either ``short_term``
+            or ``long_term``.
+
+    Returns:
+        The group's NTD balance divided by total NTD liabilities.
+        Returns None when total liabilities are zero.
+        Returns zero if the group has no liabilities but the total is positive.
+        Foreign-currency liabilities are excluded.
+    """
+    total_liabilities = get_total_liabilities_ntd()
+
+    if total_liabilities == 0:
+        return None
+
+    grouped_liability = get_liabilities_total_by_group_ntd(liability_group)
+
+    return grouped_liability / total_liabilities
