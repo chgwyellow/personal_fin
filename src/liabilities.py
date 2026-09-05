@@ -1,4 +1,5 @@
 import sqlite3
+from typing import Any
 from .database import connect_to_database
 
 
@@ -10,7 +11,7 @@ def create_liability(
     balance,
     interest_rate=None,
     due_date=None,
-):
+) -> int | None:
     """Create one liability record in the local SQLite database.
 
     Args:
@@ -59,7 +60,7 @@ def create_liability(
     return liability.lastrowid
 
 
-def get_liability(liability_id):
+def get_liability(liability_id) -> tuple[Any, ...] | None:
     """Retrieve one liability from the database by its ID.
 
     Args:
@@ -86,7 +87,7 @@ def get_liability(liability_id):
     return liability
 
 
-def list_liabilities():
+def list_liabilities() -> list[tuple[Any, ...]]:
     """Retrieve all liabilities from the database.
 
     Returns:
@@ -111,7 +112,7 @@ def list_liabilities():
     return liabilities
 
 
-def update_liability(liability_id, currency, balance):
+def update_liability(liability_id, currency, balance) -> bool:
     """Update the currency and balance of an existing liability.
 
     Args:
@@ -148,7 +149,7 @@ def update_liability(liability_id, currency, balance):
     return updated
 
 
-def delete_liability(liability_id):
+def delete_liability(liability_id) -> bool:
     """Permanently delete an existing liability from the database.
 
     Args:

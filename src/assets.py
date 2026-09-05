@@ -1,8 +1,9 @@
 import sqlite3
+from typing import Any
 from .database import connect_to_database
 
 
-def create_asset(name, asset_group, category, currency, value):
+def create_asset(name, asset_group, category, currency, value) -> int | None:
     """Create one asset record in the local SQLite database.
 
     Args:
@@ -41,7 +42,7 @@ def create_asset(name, asset_group, category, currency, value):
     return asset_id
 
 
-def get_asset(asset_id):
+def get_asset(asset_id) -> tuple[Any, ...] | None:
     """Retrieve one asset from the database by its ID.
 
     Args:
@@ -69,7 +70,7 @@ def get_asset(asset_id):
     return asset
 
 
-def list_assets():
+def list_assets() -> list[tuple[Any, ...]]:
     """Retrieve all active assets from the database.
 
     Returns:
@@ -95,7 +96,7 @@ def list_assets():
     return assets
 
 
-def update_asset(asset_id, currency, value):
+def update_asset(asset_id, currency, value) -> bool:
     """Update the currency and value of an existing asset.
 
     Args:
@@ -131,7 +132,7 @@ def update_asset(asset_id, currency, value):
     return updated
 
 
-def delete_asset(asset_id):
+def delete_asset(asset_id) -> bool:
     """Deactivate an existing asset without removing its database record.
 
     Args:

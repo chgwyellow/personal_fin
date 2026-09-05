@@ -4,7 +4,7 @@ from pathlib import Path
 DATABASE_PATH = Path("data/personal_finance.db")
 
 
-def connect_to_database():
+def connect_to_database() -> sqlite3.Connection:
     connection = sqlite3.connect(database=DATABASE_PATH)  # create it if not existing
     connection.execute("PRAGMA foreign_keys = ON")  # activate relationship
     return connection
