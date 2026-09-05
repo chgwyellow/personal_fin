@@ -1,4 +1,4 @@
-from database import connect_to_database
+from .database import connect_to_database
 
 
 def create_liability(
@@ -91,7 +91,7 @@ def list_liabilities():
 
     liabilities = cursor.fetchall()
 
-    connection.close()
+    connection.close()# 
 
     return liabilities
 

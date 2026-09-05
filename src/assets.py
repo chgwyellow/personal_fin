@@ -1,4 +1,4 @@
-from database import connect_to_database
+from .database import connect_to_database
 
 
 def create_asset(name, asset_group, category, currency, value):
