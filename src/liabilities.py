@@ -1,3 +1,4 @@
+import sqlite3
 from .database import connect_to_database
 
 
@@ -30,17 +31,30 @@ def create_liability(
     """
     connection = connect_to_database()
 
-    liability = connection.execute(
-        """
-        INSERT INTO liabilities
-        (name, liability_group, category, currency, balance, interest_rate, due_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (name, liability_group, category, currency, balance, interest_rate, due_date),
-    )
+    try:
+        liability = connection.execute(
+            """
+            INSERT INTO liabilities
+            (name, liability_group, category, currency, balance, interest_rate, due_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                liability_group,
+                category,
+                currency,
+                balance,
+                interest_rate,
+                due_date,
+            ),
+        )
 
-    connection.commit()
-    connection.close()
+        connection.commit()
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
     return liability.lastrowid
 
@@ -55,19 +69,19 @@ def get_liability(liability_id):
         The matching liability record, or ``None`` if no liability is found.
     """
     connection = connect_to_database()
+    try:
+        cursor = connection.execute(
+            """
+            SELECT id, name, liability_group, category, currency, balance, interest_rate, due_date
+            FROM liabilities
+            WHERE id = ?
+            """,
+            (liability_id,),
+        )
 
-    cursor = connection.execute(
-        """
-        SELECT id, name, liability_group, category, currency, balance, interest_rate, due_date
-        FROM liabilities
-        WHERE id = ?
-        """,
-        (liability_id,),
-    )
-
-    liability = cursor.fetchone()
-
-    connection.close()
+        liability = cursor.fetchone()
+    finally:
+        connection.close()
 
     return liability
 
@@ -81,17 +95,18 @@ def list_liabilities():
     """
     connection = connect_to_database()
 
-    cursor = connection.execute(
-        """
-        SELECT id, name, liability_group, category, currency, balance, interest_rate, due_date
-        FROM liabilities
-        ORDER BY id
-        """
-    )
+    try:
+        cursor = connection.execute(
+            """
+            SELECT id, name, liability_group, category, currency, balance, interest_rate, due_date
+            FROM liabilities
+            ORDER BY id
+            """
+        )
 
-    liabilities = cursor.fetchall()
-
-    connection.close()# 
+        liabilities = cursor.fetchall()
+    finally:
+        connection.close()
 
     return liabilities
 
@@ -111,20 +126,24 @@ def update_liability(liability_id, currency, balance):
     """
     connection = connect_to_database()
 
-    cursor = connection.execute(
-        """
-        UPDATE liabilities
-        SET currency = ?, balance = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (currency, balance, liability_id),
-    )
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE liabilities
+            SET currency = ?, balance = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (currency, balance, liability_id),
+        )
 
-    connection.commit()
+        connection.commit()
 
-    updated = cursor.rowcount > 0
-
-    connection.close()
+        updated = cursor.rowcount > 0
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
     return updated
 
@@ -143,18 +162,22 @@ def delete_liability(liability_id):
     """
     connection = connect_to_database()
 
-    cursor = connection.execute(
-        """
-        DELETE FROM liabilities
-        WHERE id = ?
-        """,
-        (liability_id,),
-    )
+    try:
+        cursor = connection.execute(
+            """
+            DELETE FROM liabilities
+            WHERE id = ?
+            """,
+            (liability_id,),
+        )
 
-    connection.commit()
+        connection.commit()
 
-    deleted = cursor.rowcount > 0
-
-    connection.close()
+        deleted = cursor.rowcount > 0
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
     return deleted

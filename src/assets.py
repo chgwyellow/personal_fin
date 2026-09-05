@@ -1,3 +1,4 @@
+import sqlite3
 from .database import connect_to_database
 
 
@@ -19,18 +20,23 @@ def create_asset(name, asset_group, category, currency, value):
     """
     connection = connect_to_database()
 
-    cursor = connection.execute(
-        """
-        INSERT INTO assets
-        (name, asset_group, category, currency, value)
-        VALUES (?, ?, ?, ?, ?);
-        """,
-        (name, asset_group, category, currency, value),
-    )
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO assets
+            (name, asset_group, category, currency, value)
+            VALUES (?, ?, ?, ?, ?);
+            """,
+            (name, asset_group, category, currency, value),
+        )
 
-    connection.commit()
-    asset_id = cursor.lastrowid
-    connection.close()
+        connection.commit()
+        asset_id = cursor.lastrowid
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
     return asset_id
 
@@ -46,18 +52,19 @@ def get_asset(asset_id):
     """
     connection = connect_to_database()
 
-    cursor = connection.execute(
-        """
-        SELECT id, name, asset_group, category, currency, value
-        FROM assets
-        WHERE id = ?
-        """,
-        (asset_id,),
-    )
+    try:
+        cursor = connection.execute(
+            """
+            SELECT id, name, asset_group, category, currency, value
+            FROM assets
+            WHERE id = ?
+            """,
+            (asset_id,),
+        )
 
-    asset = cursor.fetchone()  # get the select result
-
-    connection.close()
+        asset = cursor.fetchone()  # get the select result
+    finally:
+        connection.close()
 
     return asset
 
@@ -71,18 +78,19 @@ def list_assets():
     """
     connection = connect_to_database()
 
-    cursor = connection.execute(
-        """
-        SELECT id, name, asset_group, category, currency, value
-        FROM assets
-        WHERE is_active = 1
-        ORDER BY id;
-        """
-    )
+    try:
+        cursor = connection.execute(
+            """
+            SELECT id, name, asset_group, category, currency, value
+            FROM assets
+            WHERE is_active = 1
+            ORDER BY id;
+            """
+        )
 
-    assets = cursor.fetchall()  # get all results
-
-    connection.close()
+        assets = cursor.fetchall()  # get all results
+    finally:
+        connection.close()
 
     return assets
 
@@ -102,18 +110,23 @@ def update_asset(asset_id, currency, value):
     """
     connection = connect_to_database()
 
-    cursor = connection.execute(
-        """
-        UPDATE assets
-        SET currency = ?, value = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (currency, value, asset_id),
-    )
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE assets
+            SET currency = ?, value = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (currency, value, asset_id),
+        )
 
-    connection.commit()
-    updated = cursor.rowcount > 0
-    connection.close()
+        connection.commit()
+        updated = cursor.rowcount > 0
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
     return updated
 
@@ -134,17 +147,22 @@ def delete_asset(asset_id):
     """
     connection = connect_to_database()
 
-    cursor = connection.execute(
-        """
-        UPDATE assets
-        SET is_active = 0, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND is_active = 1
-        """,
-        (asset_id,),
-    )
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE assets
+            SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND is_active = 1
+            """,
+            (asset_id,),
+        )
 
-    connection.commit()
-    deleted = cursor.rowcount > 0
-    connection.close()
+        connection.commit()
+        deleted = cursor.rowcount > 0
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
     return deleted
