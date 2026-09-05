@@ -253,3 +253,32 @@ def get_liability_group_ratio_ntd(
     grouped_liability = get_liabilities_total_by_group_ntd(liability_group)
 
     return grouped_liability / total_liabilities
+
+
+def get_balance_sheet_summary_ntd() -> dict[str, int | float | None]:
+    """Build a summary of the balance sheet using NTD-only values.
+
+    Returns:
+        A dictionary containing:
+            total_assets: Total active NTD asset value.
+            total_liabilities: Total NTD liability balance.
+            net_worth: Total assets minus total liabilities.
+            liability_ratio: Liabilities divided by assets, or None
+                when total assets are zero.
+
+        Foreign-currency assets and liabilities are excluded.
+    """
+
+    total_assets = get_total_assets_ntd()
+    total_liabilities = get_total_liabilities_ntd()
+
+    liability_ratio = None
+    if total_assets != 0:
+        liability_ratio = total_liabilities / total_assets
+
+    return {
+        "total_assets": total_assets,
+        "total_liabilities": total_liabilities,
+        "net_worth": total_assets - total_liabilities,
+        "liability_ratio": liability_ratio,
+    }
