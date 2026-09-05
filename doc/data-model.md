@@ -2,9 +2,13 @@
 
 ## 1. Design principles
 
+NTD is the project's internal label for the New Taiwan dollar. External
+providers may require the standard code `TWD`; provider adapters must map
+between that code and `NTD` in both directions.
+
 - SQLite is the local source of truth.
 - All monetary records retain their original currency.
-- Balance-sheet values are converted to TWD for reporting.
+- Balance-sheet values are converted to NTD for reporting.
 - Portfolio prices, costs, market values, and performance are calculated in
   the security's original currency.
 - Holdings are investments and therefore a type of asset.
@@ -42,7 +46,7 @@ Stores all assets, including cash, investments, and other assets.
 | `name` | TEXT | Yes | User-facing name |
 | `asset_group` | TEXT | Yes | `liquid_asset`, `liquid_investment`, or `other_asset` |
 | `category` | TEXT | Yes | Examples: bank account, U.S. ETF, pension fund |
-| `currency` | TEXT | Yes | ISO-style code such as `TWD` or `USD` |
+| `currency` | TEXT | Yes | Project currency label such as `NTD` or `USD` |
 | `value` | NUMERIC | Yes | Current value in original currency |
 | `notes` | TEXT | No | User notes |
 | `is_active` | INTEGER | Yes | Boolean, default `1` |
@@ -176,14 +180,14 @@ used for current valuation.
 | --- | --- | ---: | --- |
 | `id` | INTEGER | Yes | Primary key |
 | `base_currency` | TEXT | Yes | For example `USD` |
-| `quote_currency` | TEXT | Yes | For example `TWD` |
+| `quote_currency` | TEXT | Yes | For example `NTD` |
 | `rate` | NUMERIC | Yes | Quote currency per base currency |
 | `observed_at` | TEXT | Yes | Provider observation time |
 | `retrieved_at` | TEXT | Yes | Local retrieval time in Taiwan time |
 | `source` | TEXT | Yes | For example `yahoo_finance` |
 
 Taiwan securities do not require FX conversion. U.S. securities are converted
-from USD to TWD for balance-sheet reporting.
+from USD to NTD for balance-sheet reporting.
 
 ### 3.9 `snapshots`
 
@@ -193,10 +197,10 @@ Stores historical balance-sheet values and selected portfolio totals.
 | --- | --- | ---: | --- |
 | `id` | INTEGER | Yes | Primary key |
 | `snapshot_date` | TEXT | Yes | Date in Taiwan time |
-| `total_assets_twd` | NUMERIC | Yes | Total assets in TWD |
-| `total_liabilities_twd` | NUMERIC | Yes | Total liabilities in TWD |
-| `net_worth_twd` | NUMERIC | Yes | Net worth in TWD |
-| `portfolio_value_twd` | NUMERIC | Yes | Portfolio value in TWD |
+| `total_assets_ntd` | NUMERIC | Yes | Total assets in NTD |
+| `total_liabilities_ntd` | NUMERIC | Yes | Total liabilities in NTD |
+| `net_worth_ntd` | NUMERIC | Yes | Net worth in NTD |
+| `portfolio_value_ntd` | NUMERIC | Yes | Portfolio value in NTD |
 | `asset_allocation_json` | TEXT | No | Allocation at snapshot time |
 | `created_at` | TEXT | Yes | Taiwan time |
 
@@ -211,7 +215,7 @@ capital_return_rate = capital_gain_loss / total_cost
 total_return_rate = total_gain_loss / total_cost
 ```
 
-Balance-sheet calculations use TWD-converted values:
+Balance-sheet calculations use NTD-converted values:
 
 ```text
 total_assets = liquid_assets + liquid_investments + other_assets

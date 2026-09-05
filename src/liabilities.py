@@ -19,7 +19,7 @@ def create_liability(
         liability_group: Liability group, either ``short_term`` or
             ``long_term``.
         category: More specific liability category, such as ``loan``.
-        currency: Three-letter currency code, such as ``TWD`` or ``USD``.
+        currency: Three-letter currency code, such as ``NTD`` or ``USD``.
         balance: Current balance in the liability's original currency.
         interest_rate: Optional annual interest rate.
         due_date: Optional repayment due date.

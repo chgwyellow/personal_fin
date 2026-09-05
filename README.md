@@ -25,7 +25,7 @@ intended to remain on the user's device.
 - Calculate total assets, total liabilities, and net worth
 - Track Taiwan and U.S. stocks and ETFs
 - Keep portfolio values and performance in the security's original currency
-- Convert balance-sheet values to TWD
+- Convert balance-sheet values to NTD
 - Record recurring investment executions for review and rollback
 - Record dividends and calculate capital gain/loss and total gain/loss
 - View historical net-worth snapshots

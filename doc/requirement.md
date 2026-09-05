@@ -10,7 +10,7 @@ This document defines the functional requirements for the first usable version o
 - **Liability**: something owed by the user.
 - **Holding**: an investment position in a security.
 - **Portfolio**: the collection of investment holdings and their valuation.
-- **Reporting currency**: the currency used for summaries; TWD is the MVP default.
+- **Reporting currency**: the currency used for summaries; NTD is the MVP default.
 - **Snapshot**: a point-in-time record of assets, liabilities, and net worth.
 
 ## 3. Assets
@@ -44,7 +44,7 @@ For balance-sheet reporting, assets are grouped into:
 - **Other assets**: pension funds, deposits, property, vehicles, precious metals, and other manually valued assets
 
 Each group must show its line items, group total, and percentage of total
-assets. Balance-sheet amounts are converted to TWD; this does not change the
+assets. Balance-sheet amounts are converted to NTD; this does not change the
 original-currency values used by portfolio reporting.
 
 ## 4. Liabilities
@@ -77,7 +77,7 @@ other assets. For this project, fixed assets are the non-liquid assets recorded
 under the “other assets” category.
 
 The balance sheet shows total assets, total liabilities, net worth, and the
-four indicators above in TWD where the result is monetary. Net-worth growth
+four indicators above in NTD where the result is monetary. Net-worth growth
 requires a previous snapshot; if no previous snapshot exists, the result must
 be shown as unavailable rather than zero.
 
@@ -154,7 +154,7 @@ The system should update latest security prices and required exchange rates. It 
 
 For the MVP, follow the StockDock approach and use Yahoo Finance as the market
 data source for Taiwan securities, U.S. securities, and currency pairs such as
-USD/TWD. Use Yahoo Finance's WebSocket endpoint for live price updates where
+USD/NTD. Use Yahoo Finance's WebSocket endpoint for live price updates where
 available, and its REST endpoints for exchange rates and fallback refreshes.
 The provider must remain behind a replaceable interface. If the application is
 later distributed commercially, the current Yahoo Finance terms and any
@@ -162,10 +162,10 @@ required market-data licensing must be reviewed before release.
 
 ## 7. Currency
 
-- TWD is the default reporting currency.
+- NTD is the default reporting currency.
 - Each asset, liability, and holding retains its original currency.
-- Taiwan securities are valued in TWD and do not require currency conversion.
-- U.S. securities are valued in USD and converted to TWD for portfolio
+- Taiwan securities are valued in NTD and do not require currency conversion.
+- U.S. securities are valued in USD and converted to NTD for portfolio
   summaries.
 - Converted values must identify the exchange-rate timestamp or date and source.
 - Missing exchange rates must show a warning, never a silent or zero-valued conversion.
@@ -205,7 +205,7 @@ Financial data stays local by default; no account or cloud database is required.
 The MVP is usable when the user can:
 
 1. Record assets and liabilities in multiple currencies.
-2. View total assets, total liabilities, and net worth in TWD.
+2. View total assets, total liabilities, and net worth in NTD.
 3. Record Taiwan and U.S. stock or ETF holdings.
 4. View cost basis, market value, gain/loss, and portfolio weight.
 5. Update prices and exchange rates without losing prior data.

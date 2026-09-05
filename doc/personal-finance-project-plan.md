@@ -59,10 +59,10 @@ workflow has several limitations:
 2. Data entry and presentation are mixed together.
 3. Portfolio and net-worth information require manually maintained
     formulas and charts.
-4. Multi-currency portfolios, especially TWD-based portfolios
+4. Multi-currency portfolios, especially NTD-based portfolios
     containing both Taiwan and U.S. securities, are not handled
     elegantly by many existing portfolio applications.
-5. Existing desktop tools may support securities but not TWD as the
+5. Existing desktop tools may support securities but not NTD as the
     user's base/reporting currency.
 6. The user should retain ownership of sensitive personal financial
     data rather than being required to upload it to a third-party cloud
@@ -109,13 +109,13 @@ Early versions should not require:
 - Hosted databases
 - Monthly infrastructure costs
 
-### 4.2 TWD-first, multi-currency capable
+### 4.2 NTD-first, multi-currency capable
 
-The application should support **TWD as a first-class base currency**.
+The application should support **NTD as a first-class base currency**.
 
 Assets may be denominated in currencies such as:
 
-- TWD
+- NTD
 - USD
 - JPY
 - EUR
@@ -219,7 +219,7 @@ Automatically calculate:
 - Liability ratio
 - Asset allocation
 
-The balance sheet should present all monetary values in TWD. Assets should be
+The balance sheet should present all monetary values in NTD. Assets should be
 split into liquid assets, liquid investments, and other assets, with line items
 and section totals. Liabilities should be split into short-term and long-term
 liabilities, also with line items and group totals. This is separate from the
@@ -270,7 +270,7 @@ the MVP.
 Where technically and legally practical, automatically retrieve:
 
 - Current/latest security prices
-- TWD/USD exchange rate
+- NTD/USD exchange rate
 - Other required FX rates
 
 Market-data providers should remain replaceable rather than tightly
@@ -445,8 +445,8 @@ Potential fields:
 The schema should be normalized only where doing so improves correctness
 and maintainability. Premature complexity should be avoided.
 
-Taiwan securities are valued in TWD without FX conversion. U.S. securities are
-valued in USD and converted to TWD for summaries. Dates and timestamps use
+Taiwan securities are valued in NTD without FX conversion. U.S. securities are
+valued in USD and converted to NTD for summaries. Dates and timestamps use
 Taiwan time (`Asia/Taipei`).
 
 ------------------------------------------------------------------------
@@ -641,7 +641,7 @@ Potential responsibilities:
 - [x] Identify the problem
 - [x] Define high-level scope
 - [x] Decide on local-first direction
-- [x] Identify TWD support as a key requirement
+- [x] Identify NTD support as a key requirement
 - [x] Create GitHub repository
 - [ ] Write initial README
 - [x] Add project plan
@@ -674,7 +674,7 @@ Potential responsibilities:
 - [ ] Implement market value
 - [ ] Implement gain/loss
 - [ ] Implement portfolio allocation
-- [ ] Implement TWD reporting
+- [ ] Implement NTD reporting
 - [ ] Implement FX conversion
 - [ ] Define recurring investment plan model
 - [ ] Implement simulated recurring-investment execution flow
@@ -770,7 +770,7 @@ More specifically:
 - Liabilities can be recorded easily.
 - Net worth is calculated correctly.
 - Taiwan and U.S. investments can be represented.
-- Portfolio value can be reported in TWD.
+- Portfolio value can be reported in NTD.
 - Market values can be updated with minimal manual work.
 - Historical net worth can be viewed.
 - Data remains local.

@@ -116,10 +116,10 @@ CREATE TABLE IF NOT EXISTS exchange_rates (
 CREATE TABLE IF NOT EXISTS snapshots (
     id INTEGER PRIMARY KEY,
     snapshot_date TEXT NOT NULL UNIQUE,
-    total_assets_twd NUMERIC NOT NULL CHECK (total_assets_twd >= 0),
-    total_liabilities_twd NUMERIC NOT NULL CHECK (total_liabilities_twd >= 0),
-    net_worth_twd NUMERIC NOT NULL,
-    portfolio_value_twd NUMERIC NOT NULL CHECK (portfolio_value_twd >= 0),
+    total_assets_ntd NUMERIC NOT NULL CHECK (total_assets_ntd >= 0),
+    total_liabilities_ntd NUMERIC NOT NULL CHECK (total_liabilities_ntd >= 0),
+    net_worth_ntd NUMERIC NOT NULL,
+    portfolio_value_ntd NUMERIC NOT NULL CHECK (portfolio_value_ntd >= 0),
     asset_allocation_json TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

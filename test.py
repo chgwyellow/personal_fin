@@ -10,7 +10,7 @@ liability_id = create_liability(
     name="test_liability",
     liability_group="short_term",
     category="loan",
-    currency="TWD",
+    currency="NTD",
     balance=1000,
 )
 
@@ -22,7 +22,7 @@ liability = get_liability(liability_id=liability_id)
 print("Specific liability: ", liability)
 
 # 3. Update liability
-updated = update_liability(liability_id=liability_id, currency="TWD", balance=2000)
+updated = update_liability(liability_id=liability_id, currency="NTD", balance=2000)
 
 print("Updated balance: ", updated)
 
@@ -37,7 +37,7 @@ liability = get_liability(liability_id=liability_id)
 print("Specific liability: ", liability)
 
 # 6. update and delete again
-updated = update_liability(liability_id=liability_id, currency="TWD", balance=2000)
+updated = update_liability(liability_id=liability_id, currency="NTD", balance=2000)
 
 print("Updated balance: ", updated)
 

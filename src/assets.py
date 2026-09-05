@@ -10,7 +10,7 @@ def create_asset(name, asset_group, category, currency, value) -> int | None:
         name: User-facing name of the asset.
         asset_group: Balance-sheet group, such as ``liquid_asset``.
         category: More specific category, such as ``bank_account``.
-        currency: Three-letter currency code, such as ``TWD`` or ``USD``.
+        currency: Three-letter currency code, such as ``NTD`` or ``USD``.
         value: Current value in the asset's original currency.
 
     Returns:
