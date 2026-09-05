@@ -24,3 +24,27 @@ def get_total_assets_twd() -> int | float:
         connection.close()
 
     return total_assets[0]
+
+
+def get_total_liabilities_twd() -> int | float:
+    connection = connect_to_database()
+
+    try:
+        cursor = connection.execute(
+            """
+            SELECT COALESCE(SUM(balance), 0)
+            FROM liabilities
+            WHERE currency = 'TWD'
+            """
+        )
+        total_liabilities = cursor.fetchone()
+    finally:
+        connection.close()
+
+    return total_liabilities[0]
+
+
+def get_net_worth_twd() -> int | float:
+    net_worth_ntd = get_total_assets_twd() - get_total_liabilities_twd()
+
+    return net_worth_ntd
