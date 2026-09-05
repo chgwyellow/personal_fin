@@ -50,3 +50,24 @@ def get_net_worth_ntd() -> int | float:
     net_worth_ntd = get_total_assets_ntd() - get_total_liabilities_ntd()
 
     return net_worth_ntd
+
+
+def get_assets_total_by_group_ntd(asset_group: str) -> int | float:
+    connection = connect_to_database()
+
+    try:
+        cursor = connection.execute(
+            """
+            SELECT COALESCE(SUM(value), 0)
+            FROM assets
+            WHERE is_active = 1
+            AND currency = 'NTD'
+            AND asset_group = ?
+            """,
+            (asset_group,),
+        )
+        grouped_asset = cursor.fetchone()
+    finally:
+        connection.close()
+
+    return grouped_asset[0]
