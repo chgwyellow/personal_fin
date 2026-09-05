@@ -166,3 +166,42 @@ def get_free_cash_flow_ntd() -> int | float:
     fixed_asset = get_assets_total_by_group_ntd("other_asset")
 
     return net_worth - fixed_asset
+
+
+def get_cash_ratio_ntd() -> float | None:
+    """Calculate the cash ratio using NTD-only values.
+
+    Returns:
+        Active NTD liquid assets divided by total NTD liabilities.
+        Returns None when total liabilities are zero.
+        Foreign currencies are excluded.
+    """
+    liquid_asset = get_assets_total_by_group_ntd("liquid_asset")
+    liabilities = get_total_liabilities_ntd()
+
+    if liabilities == 0:
+        return None
+
+    return liquid_asset / liabilities
+
+
+def calculate_net_worth_growth_rate(
+    current_net_worth: int | float,
+    previous_net_worth: int | float,
+) -> float | None:
+    """Calculate the change in net worth relative to the previous magnitude.
+
+    Args:
+        current_net_worth: Net worth for the current period.
+        previous_net_worth: Net worth for the previous period.
+            Both values must use the same currency.
+
+    Returns:
+        (Current net worth - previous net worth) / abs(previous net worth).
+        Positive values indicate improvement, including from negative net worth.
+        Returns None when previous net worth is zero.
+    """
+    if previous_net_worth == 0:
+        return None
+
+    return (current_net_worth - previous_net_worth) / abs(previous_net_worth)

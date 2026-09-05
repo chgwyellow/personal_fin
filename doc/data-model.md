@@ -223,7 +223,7 @@ net_worth = total_assets - total_liabilities
 free_cash_flow = net_worth - fixed_assets
 cash_ratio = liquid_assets - total_liabilities
 equity_multiplier = total_assets / net_worth
-net_worth_growth_rate = (current_net_worth - previous_net_worth) / previous_net_worth
+net_worth_growth_rate = (current_net_worth - previous_net_worth) / abs(previous_net_worth)
 ```
 
 Division-by-zero results should be represented as unavailable, not zero.

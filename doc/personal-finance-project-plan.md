@@ -231,7 +231,7 @@ The balance-sheet indicators are defined as follows:
 - Free cash flow = net worth - fixed assets
 - Cash ratio = liquid assets - total liabilities
 - Equity multiplier = total assets / net worth
-- Net-worth growth rate = (current net worth - previous net worth) / previous net worth
+- Net-worth growth rate = (current net worth - previous net worth) / abs(previous net worth)
 
 Fixed assets are represented by non-liquid assets in the “other assets” group.
 

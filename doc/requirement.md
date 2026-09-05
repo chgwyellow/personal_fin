@@ -69,7 +69,7 @@ Liability ratio = total liabilities / total assets
 Free cash flow = net worth - fixed assets
 Cash ratio = liquid assets - total liabilities
 Equity multiplier = total assets / net worth
-Net-worth growth rate = (current net worth - previous net worth) / previous net worth
+Net-worth growth rate = (current net worth - previous net worth) / abs(previous net worth)
 ```
 
 The dashboard should also show asset allocation by category and the value of
