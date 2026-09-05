@@ -53,6 +53,17 @@ def get_net_worth_ntd() -> int | float:
 
 
 def get_assets_total_by_group_ntd(asset_group: str) -> int | float:
+    """Sum active NTD asset values for the specified group.
+
+    Args:
+        asset_group: The group to sum, such as ``liquid_asset``,
+            ``liquid_investment``, or ``other_asset``.
+
+    Returns:
+        The total stored value, or zero if no matching assets exist.
+        Inactive and foreign-currency assets are excluded.
+        No FX conversion is performed.
+    """
     connection = connect_to_database()
 
     try:
@@ -71,3 +82,87 @@ def get_assets_total_by_group_ntd(asset_group: str) -> int | float:
         connection.close()
 
     return grouped_asset[0]
+
+
+def get_liabilities_total_by_group_ntd(
+    liability_group: str,
+) -> int | float:
+    """Sum NTD liability balances for the specified group.
+
+    Args:
+        liability_group: The group to sum, either ``short_term`` or
+            ``long_term``.
+
+    Returns:
+        The total balance, or zero if no matching liabilities exist.
+        Foreign-currency liabilities are excluded; no FX conversion
+        is performed.
+    """
+    connection = connect_to_database()
+
+    try:
+        cursor = connection.execute(
+            """
+            SELECT COALESCE(SUM(balance), 0)
+            FROM liabilities
+            WHERE currency = 'NTD'
+            AND liability_group = ?
+            """,
+            (liability_group,),
+        )
+        grouped_liability = cursor.fetchone()
+    finally:
+        connection.close()
+
+    return grouped_liability[0]
+
+
+def get_liability_ratio_ntd() -> float | None:
+    """Calculate the liability-to-asset ratio using NTD-only values.
+
+    Returns:
+        Total NTD liabilities divided by total active NTD assets.
+        Returns None when total assets are zero.
+        Foreign-currency assets and liabilities are excluded.
+    """
+    total_assets = get_total_assets_ntd()
+
+    if total_assets == 0:
+        return None
+
+    total_liabilities = get_total_liabilities_ntd()
+
+    return total_liabilities / total_assets
+
+
+def get_equity_multiplier_ntd() -> float | None:
+    """Calculate the equity multiplier using NTD-only values.
+
+    Returns:
+        Total active NTD assets divided by NTD net worth.
+        Returns None when net worth is zero.
+        Foreign-currency assets and liabilities are excluded.
+    """
+    net_worth = get_net_worth_ntd()
+
+    if net_worth == 0:
+        return None
+
+    total_assets = get_total_assets_ntd()
+
+    return total_assets / net_worth
+
+
+def get_free_cash_flow_ntd() -> int | float:
+    """Calculate the project's custom free-cash-flow metric in NTD.
+
+    Returns:
+        NTD net worth minus active NTD assets in the ``other_asset`` group.
+        The result may be negative. Foreign currencies are excluded.
+
+    This project-specific metric does not measure cash flows over a period.
+    """
+    net_worth = get_net_worth_ntd()
+    fixed_asset = get_assets_total_by_group_ntd("other_asset")
+
+    return net_worth - fixed_asset
