@@ -288,3 +288,52 @@ def get_balance_sheet_summary_ntd() -> dict[str, int | float | None]:
         "liquid_investments": get_assets_total_by_group_ntd("liquid_investment"),
         "other_assets": get_assets_total_by_group_ntd("other_asset"),
     }
+
+
+def get_balance_sheet_indicators_ntd(
+    previous_net_worth: int | float | None = None,
+) -> dict[str, int | float | None]:
+    """Build all NTD balance-sheet indicators.
+
+    Args:
+        previous_net_worth: Optional previous-period net worth used to
+            calculate the growth rate.
+
+    Returns:
+        A dictionary containing the balance-sheet indicators.
+    """
+    total_assets = get_total_assets_ntd()
+    total_liabilities = get_total_liabilities_ntd()
+    net_worth = total_assets - total_liabilities
+
+    cash_ratio = None
+    if total_liabilities != 0:
+        cash_ratio = get_assets_total_by_group_ntd("liquid_asset") / total_liabilities
+
+    liability_ratio = None
+    if total_assets != 0:
+        liability_ratio = total_liabilities / total_assets
+
+    equity_multiplier = None
+    if net_worth != 0:
+        equity_multiplier = total_assets / net_worth
+
+    net_worth_growth_rate = None
+    if previous_net_worth not in (None, 0):
+        net_worth_growth_rate = (net_worth - previous_net_worth) / abs(
+            previous_net_worth
+        )
+
+    return {
+        "total_assets": total_assets,
+        "liquid_assets": get_assets_total_by_group_ntd("liquid_asset"),
+        "liquid_investments": get_assets_total_by_group_ntd("liquid_investment"),
+        "other_assets": get_assets_total_by_group_ntd("other_asset"),
+        "total_liabilities": total_liabilities,
+        "net_worth": net_worth,
+        "liability_ratio": liability_ratio,
+        "free_cash_flow": net_worth - get_assets_total_by_group_ntd("other_asset"),
+        "cash_ratio": cash_ratio,
+        "equity_multiplier": equity_multiplier,
+        "net_worth_growth_rate": net_worth_growth_rate,
+    }
