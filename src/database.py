@@ -1,3 +1,5 @@
+"""SQLite connection utilities for the personal finance application."""
+
 import sqlite3
 from pathlib import Path
 

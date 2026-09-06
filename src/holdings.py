@@ -1,3 +1,5 @@
+"""CRUD operations for investment holding records."""
+
 import sqlite3
 from .database import connect_to_database
 

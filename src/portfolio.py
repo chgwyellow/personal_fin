@@ -1,3 +1,5 @@
+"""Investment portfolio metric and aggregation calculations."""
+
 from typing import cast
 
 from .holdings import get_holding

@@ -1,3 +1,5 @@
+"""Balance sheet totals and financial indicator calculations."""
+
 from .database import connect_to_database
 
 

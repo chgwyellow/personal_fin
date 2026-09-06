@@ -1,3 +1,5 @@
+"""CRUD operations for personal liability records."""
+
 import sqlite3
 from typing import Any
 from .database import connect_to_database
