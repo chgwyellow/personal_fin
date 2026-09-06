@@ -2,7 +2,7 @@
 
 from typing import cast
 
-from .holdings import get_holding
+from .holdings import get_holding, list_holdings
 
 
 def calculate_average_cost(
@@ -244,3 +244,37 @@ def calculate_portfolio_totals(
         "total_capital_gain_or_loss": total_capital_gain_or_loss,
         "total_gain_or_loss": total_gain_or_loss,
     }
+
+
+def get_portfolio_summary(
+    market_prices: dict[str, int | float],
+) -> dict[str, int | float]:
+    """Calculate the summary of all investment holdings.
+
+    Args:
+        market_prices: Current prices keyed by holding symbol.
+
+    Returns:
+        Portfolio totals including cost, market value, capital gain or loss,
+        and total gain or loss.
+    """
+    holdings = list_holdings()
+
+    holding_metrics = []
+
+    for holding in holdings:
+        shares = holding[6]
+        total_cost = holding[7]
+        market_price = market_prices[holding[2]]
+
+        holding_metrics.append(
+            calculate_holding_metrics(shares, total_cost, market_price)
+        )
+
+    return calculate_portfolio_totals(holding_metrics)
+
+
+def get_portfolio_details(
+    market_prices: dict[str, int | float],
+) -> list[dict]:
+    """Calculate metrics for each investment holding."""
