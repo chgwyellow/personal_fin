@@ -1,3 +1,5 @@
+from typing import cast
+
 from .holdings import get_holding
 
 
@@ -170,6 +172,7 @@ def calculate_holding_metrics(
     return {
         "average_cost": average_cost,
         "market_value": market_value,
+        "total_cost": total_cost,
         "capital_gain_or_loss": capital_gain_or_loss,
         "capital_return_rate": capital_return_rate,
         "total_gain_or_loss": total_gain_or_loss,
@@ -199,3 +202,43 @@ def get_holding_metrics_by_id(
         shares, total_cost = holding[-2:]
 
     return calculate_holding_metrics(shares, total_cost, market_price, dividend_total)
+
+
+def calculate_portfolio_totals(
+    holding_metrics: list[dict[str, int | float | None]],
+) -> dict[str, int | float]:
+    """Calculate aggregate totals for multiple holdings.
+
+    Args:
+        holding_metrics: Metrics for each holding, calculated in the same
+            original currency.
+
+    Returns:
+        A dictionary containing:
+            total_market_value: Sum of all holding market values.
+            total_cost: Sum of all holding costs.
+            total_capital_gain_or_loss: Sum of capital gains or losses.
+            total_gain_or_loss: Sum of gains or losses including dividends.
+
+    Raises:
+    """
+    total_cost = 0
+    total_market_value = 0
+    total_capital_gain_or_loss = 0
+    total_gain_or_loss = 0
+
+    for metrics in holding_metrics:
+        total_cost += cast(int | float, metrics["total_cost"])
+        total_market_value += cast(int | float, metrics["market_value"])
+        total_capital_gain_or_loss += cast(
+            int | float,
+            metrics["capital_gain_or_loss"],
+        )
+        total_gain_or_loss += cast(int | float, metrics["total_gain_or_loss"])
+
+    return {
+        "total_cost": total_cost,
+        "total_market_value": total_market_value,
+        "total_capital_gain_or_loss": total_capital_gain_or_loss,
+        "total_gain_or_loss": total_gain_or_loss,
+    }
