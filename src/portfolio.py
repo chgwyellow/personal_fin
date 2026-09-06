@@ -1,3 +1,6 @@
+from .holdings import get_holding
+
+
 def calculate_average_cost(
     total_cost: int | float,
     shares: int | float,
@@ -172,3 +175,27 @@ def calculate_holding_metrics(
         "total_gain_or_loss": total_gain_or_loss,
         "total_return_rate": total_return_rate,
     }
+
+
+def get_holding_metrics_by_id(
+    holding_id: int,
+    market_price: int | float,
+    dividend_total: int | float = 0,
+) -> dict[str, int | float | None] | None:
+    """Calculate metrics for a stored holding.
+
+    Args:
+        holding_id: The unique ID of the holding.
+        market_price: Current price in the holding's original currency.
+        dividend_total: Total dividends in the original currency.
+
+    Returns:
+        A dictionary of holding metrics, or None if the holding is not found.
+    """
+
+    if (holding := get_holding(holding_id)) is None:
+        return None
+    else:
+        shares, total_cost = holding[-2:]
+
+    return calculate_holding_metrics(shares, total_cost, market_price, dividend_total)
