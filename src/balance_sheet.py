@@ -305,6 +305,7 @@ def get_balance_sheet_indicators_ntd(
     total_assets = get_total_assets_ntd()
     total_liabilities = get_total_liabilities_ntd()
     net_worth = total_assets - total_liabilities
+    other_asset = get_assets_total_by_group_ntd("other_asset")
 
     cash_ratio = None
     if total_liabilities != 0:
@@ -328,11 +329,11 @@ def get_balance_sheet_indicators_ntd(
         "total_assets": total_assets,
         "liquid_assets": get_assets_total_by_group_ntd("liquid_asset"),
         "liquid_investments": get_assets_total_by_group_ntd("liquid_investment"),
-        "other_assets": get_assets_total_by_group_ntd("other_asset"),
+        "other_assets": other_asset,
         "total_liabilities": total_liabilities,
         "net_worth": net_worth,
         "liability_ratio": liability_ratio,
-        "free_cash_flow": net_worth - get_assets_total_by_group_ntd("other_asset"),
+        "free_cash_flow": net_worth - other_asset,
         "cash_ratio": cash_ratio,
         "equity_multiplier": equity_multiplier,
         "net_worth_growth_rate": net_worth_growth_rate,
