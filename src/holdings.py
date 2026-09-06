@@ -136,3 +136,34 @@ def update_holding(
         connection.close()
 
     return updated
+
+
+def delete_holding(holding_id: int) -> bool:
+    """Permanently delete an investment holding.
+
+    Args:
+        holding_id: The unique ID of the holding to delete.
+
+    Returns:
+        ``True`` if a holding was found and deleted; otherwise, ``False``.
+    """
+    connection = connect_to_database()
+
+    try:
+        cursor = connection.execute(
+            """
+            DELETE FROM holdings
+            WHERE id = ?
+            """,
+            (holding_id,),
+        )
+
+        deleted = cursor.rowcount > 0
+        connection.commit()
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+    return deleted
