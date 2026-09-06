@@ -258,23 +258,39 @@ def get_portfolio_summary(
         Portfolio totals including cost, market value, capital gain or loss,
         and total gain or loss.
     """
-    holdings = list_holdings()
-
-    holding_metrics = []
-
-    for holding in holdings:
-        shares = holding[6]
-        total_cost = holding[7]
-        market_price = market_prices[holding[2]]
-
-        holding_metrics.append(
-            calculate_holding_metrics(shares, total_cost, market_price)
-        )
+    details = get_portfolio_details(market_prices)
+    holding_metrics = [
+        cast(dict[str, int | float | None], detail["metrics"])
+        for detail in details
+    ]
 
     return calculate_portfolio_totals(holding_metrics)
 
 
 def get_portfolio_details(
     market_prices: dict[str, int | float],
-) -> list[dict]:
-    """Calculate metrics for each investment holding."""
+) -> list[dict[str, object]]:
+    """Calculate metrics for each investment holding.
+
+    Args:
+        market_prices: Current prices keyed by holding symbol.
+
+    Returns:
+        A list containing each holding's symbol and calculated metrics.
+    """
+    stored_holdings = list_holdings()
+
+    holding_details: list[dict[str, object]] = []
+
+    for holding in stored_holdings:
+        shares = holding[6]
+        total_cost = holding[7]
+        market_price = market_prices[holding[2]]
+
+        metrics = calculate_holding_metrics(shares, total_cost, market_price)
+
+        symbol = holding[2]
+
+        holding_details.append({"symbol": symbol, "metrics": metrics})
+
+    return holding_details
