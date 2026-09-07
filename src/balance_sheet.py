@@ -1,14 +1,17 @@
 """Balance sheet totals and financial indicator calculations."""
 
 from .database import connect_to_database
+from .exchange_rates import convert_amount, get_latest_exchange_rate
 
 
 def get_total_assets_ntd() -> int | float:
-    """Sum the stored values of active assets denominated in NTD.
+    """Calculate total active asset values converted to NTD.
 
     Returns:
-        The total value, or zero if no active NTD assets exist.
-        Foreign-currency assets are excluded; no FX conversion is performed.
+        The total value in NTD.
+
+    Raises:
+        ValueError: If USD assets exist but no USD-to-NTD rate is available.
     """
     connection = connect_to_database()
 
@@ -21,11 +24,27 @@ def get_total_assets_ntd() -> int | float:
             AND currency = 'NTD'
             """
         )
-        total_assets = cursor.fetchone()
+        total_assets_ntd = cursor.fetchone()[0]
+
+        cursor = connection.execute(
+            """
+            SELECT COALESCE(SUM(value), 0)
+            FROM assets
+            WHERE is_active = 1
+            AND currency = 'USD'
+            """
+        )
+        exchange_rate = get_latest_exchange_rate("USD", "NTD")
+        if exchange_rate is None:
+            raise ValueError("Missing exchange rate for USD to NTD")
+
+        total_assets_usd = convert_amount(cursor.fetchone()[0], exchange_rate)
+
+        total_assets = total_assets_ntd + total_assets_usd
     finally:
         connection.close()
 
-    return total_assets[0]
+    return total_assets
 
 
 def get_total_liabilities_ntd() -> int | float:
