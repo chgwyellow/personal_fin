@@ -53,3 +53,25 @@ def create_dividend(
         connection.close()
 
     return dividend_id
+
+
+def list_dividends_by_holding(
+    holding_id: int,
+) -> list[tuple]:
+    """List all dividend records for one investment holding."""
+    connection = connect_to_database()
+
+    try:
+        dividend_details = connection.execute(
+            """
+            SELECT id, holding_id, received_date, amount, currency
+            FROM dividends
+            WHERE holding_id = ?
+            ORDER BY received_date
+            """,
+            (holding_id,),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    return dividend_details

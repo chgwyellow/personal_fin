@@ -2,7 +2,11 @@ import sqlite3
 
 import pytest
 
-from src.dividends import create_dividend, get_total_dividends_by_holding
+from src.dividends import (
+    create_dividend,
+    get_total_dividends_by_holding,
+    list_dividends_by_holding,
+)
 
 
 def create_test_connection(
@@ -101,3 +105,29 @@ def test_create_dividend_with_invalid_holding(monkeypatch) -> None:
 
     with pytest.raises(sqlite3.IntegrityError):
         create_dividend(999, "2026-04-01", 150, "NTD")
+
+
+def test_list_dividends_by_holding(monkeypatch) -> None:
+    """Test listing dividends in received-date order."""
+    connection = create_test_connection()
+    connection.executemany(
+        """
+        INSERT INTO dividends
+        (holding_id, received_date, amount, currency)
+        VALUES (?, ?, ?, ?)
+        """,
+        [
+            (1, "2026-06-01", 200, "NTD"),
+            (1, "2026-04-01", 100, "NTD"),
+            (2, "2026-05-01", 999, "NTD"),
+        ],
+    )
+    connection.commit()
+    monkeypatch.setattr("src.dividends.connect_to_database", lambda: connection)
+
+    result = list_dividends_by_holding(1)
+
+    assert result == [
+        (2, 1, "2026-04-01", 100, "NTD"),
+        (1, 1, "2026-06-01", 200, "NTD"),
+    ]
