@@ -48,6 +48,7 @@ def test_get_portfolio_details(monkeypatch) -> None:
     result = get_portfolio_details({"TEST1": 120, "TEST2": 450})
 
     assert result[0]["symbol"] == "TEST1"
+    assert result[0]["currency"] == "NTD"
     assert result[0]["dividend_total"] == 0
     metrics_1 = cast(dict[str, int | float | None], result[0]["metrics"])
     metrics_2 = cast(dict[str, int | float | None], result[1]["metrics"])
@@ -68,10 +69,12 @@ def test_get_portfolio_summary(monkeypatch) -> None:
     result = get_portfolio_summary({"TEST1": 120, "TEST2": 450})
 
     assert result == {
-        "total_cost": 3000,
-        "total_market_value": 3450,
-        "total_capital_gain_or_loss": 450,
-        "total_gain_or_loss": 450,
+        "NTD": {
+            "total_cost": 3000,
+            "total_market_value": 3450,
+            "total_capital_gain_or_loss": 450,
+            "total_gain_or_loss": 450,
+        },
     }
 
 
@@ -91,6 +94,36 @@ def test_get_portfolio_details_with_dividends(monkeypatch) -> None:
 
     assert result[0]["dividend_total"] == 50
     assert metrics["total_gain_or_loss"] == 250
+
+
+def test_get_portfolio_summary_groups_by_currency(monkeypatch) -> None:
+    """Test that holdings in different currencies are not combined."""
+    stored_holdings = [
+        (1, 1, "TWTEST", "Taiwan Test", "TW", "NTD", 10, 1000),
+        (2, 2, "USTEST", "U.S. Test", "US", "USD", 5, 2000),
+    ]
+    monkeypatch.setattr("src.portfolio.list_holdings", lambda: stored_holdings)
+    monkeypatch.setattr(
+        "src.portfolio.get_total_dividends_by_holding",
+        lambda holding_id: 0,
+    )
+
+    result = get_portfolio_summary({"TWTEST": 120, "USTEST": 450})
+
+    assert result == {
+        "NTD": {
+            "total_cost": 1000,
+            "total_market_value": 1200,
+            "total_capital_gain_or_loss": 200,
+            "total_gain_or_loss": 200,
+        },
+        "USD": {
+            "total_cost": 2000,
+            "total_market_value": 2250,
+            "total_capital_gain_or_loss": 250,
+            "total_gain_or_loss": 250,
+        },
+    }
 
 
 def test_get_portfolio_details_with_missing_price(monkeypatch) -> None:

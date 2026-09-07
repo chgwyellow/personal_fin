@@ -1,32 +1,56 @@
 # Personal Finance
 
-A local-first personal finance application for tracking net worth, assets,
-liabilities, and investment portfolios.
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/chgwyellow/personal_fin)
+[![Python](https://img.shields.io/badge/Python-3.14+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![SQLite](https://img.shields.io/badge/SQLite-local-003B57.svg?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![uv](https://img.shields.io/badge/managed%20by-uv-6C5CE7.svg)](https://docs.astral.sh/uv/)
+[![Tests](https://img.shields.io/badge/tests-30%20passing-success.svg)](https://github.com/chgwyellow/personal_fin)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## Installation
+Make your finances easier to understand.
 
-The project is currently under development and does not yet provide a
-release installer.
-
-To obtain the source code:
-
-```bash
-git clone <repository-url>
-cd personal_fin
-```
-
-The application will use a local SQLite database. Personal financial data is
-intended to remain on the user's device.
+Personal Finance is a privacy-first personal finance tool that helps you
+understand your cash, investments, liabilities, and net worth over time. Your
+financial data stays on your own device instead of being sent to a third-party
+service.
 
 ## Product Features
 
-- Track liquid assets, liquid investments, and other assets
-- Track short-term and long-term liabilities
-- Calculate total assets, total liabilities, and net worth
-- Track Taiwan and U.S. stocks and ETFs
-- Keep portfolio values and performance in the security's original currency
-- Convert balance-sheet values to NTD
-- Record recurring investment executions for review and rollback
-- Record dividends and calculate capital gain/loss and total gain/loss
-- View historical net-worth snapshots
-- Keep data local and support backup and export
+- See total assets, liabilities, net worth, and free cash flow at a glance
+- Organize cash, stocks, ETFs, and other assets clearly
+- Track Taiwan and U.S. investments while keeping portfolio values in their
+  original currencies
+- Convert balance-sheet values with exchange rates and view them in NTD
+- Record dividends and distinguish capital gains from total gains
+- Manage recurring investment plans and their individual executions
+- Keep market-price and exchange-rate history for review and recovery
+- Store everything locally with SQLite for speed, simplicity, and privacy
+
+## Built With
+
+- Python 3.14+
+- SQLite
+- uv
+- pytest
+- Git / GitHub
+
+## Getting Started
+
+The project is currently under development and does not yet provide a desktop
+installer. Clone the repository and set up the environment with uv:
+
+```bash
+git clone https://github.com/chgwyellow/personal_fin.git
+cd personal_fin
+uv sync
+```
+
+## Project Information
+
+- Start date: 2026-09-02
+- Current version: 0.1.0
+- Development platform: macOS
+- License: MIT License
+
+The desktop interface and automatic market-data integration are currently in
+development.

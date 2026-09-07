@@ -250,22 +250,31 @@ def calculate_portfolio_totals(
 
 def get_portfolio_summary(
     market_prices: dict[str, int | float],
-) -> dict[str, int | float]:
-    """Calculate the summary of all investment holdings.
+) -> dict[str, dict[str, int | float]]:
+    """Calculate portfolio totals grouped by original currency.
 
     Args:
         market_prices: Current prices keyed by holding symbol.
 
     Returns:
-        Portfolio totals including cost, market value, capital gain or loss,
-        and total gain or loss.
+        Portfolio totals keyed by currency. Holdings in different currencies
+        are never added together.
     """
     details = get_portfolio_details(market_prices)
-    holding_metrics = [
-        cast(dict[str, int | float | None], detail["metrics"]) for detail in details
-    ]
+    metrics_by_currency: dict[
+        str,
+        list[dict[str, int | float | None]],
+    ] = {}
 
-    return calculate_portfolio_totals(holding_metrics)
+    for detail in details:
+        currency = cast(str, detail["currency"])
+        metrics = cast(dict[str, int | float | None], detail["metrics"])
+        metrics_by_currency.setdefault(currency, []).append(metrics)
+
+    return {
+        currency: calculate_portfolio_totals(metrics)
+        for currency, metrics in metrics_by_currency.items()
+    }
 
 
 def get_portfolio_details(
@@ -307,6 +316,7 @@ def get_portfolio_details(
         holding_details.append(
             {
                 "symbol": symbol,
+                "currency": holding[5],
                 "dividend_total": dividend_total,
                 "metrics": metrics,
             }
