@@ -75,3 +75,26 @@ def list_dividends_by_holding(
         connection.close()
 
     return dividend_details
+
+
+def delete_dividend(dividend_id: int) -> bool:
+    """Delete one dividend record by its ID."""
+    connection = connect_to_database()
+
+    try:
+        cursor = connection.execute(
+            """
+            DELETE FROM dividends
+            WHERE id = ?
+            """,
+            (dividend_id,),
+        )
+        connection.commit()
+        deleted = cursor.rowcount > 0
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+    return deleted

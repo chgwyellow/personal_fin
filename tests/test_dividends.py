@@ -2,8 +2,10 @@ import sqlite3
 
 import pytest
 
+from src.database import connect_to_database
 from src.dividends import (
     create_dividend,
+    delete_dividend,
     get_total_dividends_by_holding,
     list_dividends_by_holding,
 )
@@ -131,3 +133,20 @@ def test_list_dividends_by_holding(monkeypatch) -> None:
         (2, 1, "2026-04-01", 100, "NTD"),
         (1, 1, "2026-06-01", 200, "NTD"),
     ]
+
+
+def test_delete_dividend(monkeypatch) -> None:
+    """Test deleting an existing dividend record."""
+    connection = create_test_connection()
+    connection.execute(
+        """
+        INSERT INTO dividends
+        (id, holding_id, received_date, amount, currency)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (1, 1, "2026-04-01", 150, "NTD"),
+    )
+    connection.commit()
+    monkeypatch.setattr("src.dividends.connect_to_database", lambda: connection)
+
+    assert delete_dividend(1) is True
