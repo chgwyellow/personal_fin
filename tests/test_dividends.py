@@ -1,6 +1,6 @@
 import sqlite3
 
-from src.dividends import get_total_dividends_by_holding
+from src.dividends import create_dividend, get_total_dividends_by_holding
 
 
 def create_test_connection() -> sqlite3.Connection:
@@ -47,3 +47,44 @@ def test_get_total_dividends_without_records(monkeypatch) -> None:
     monkeypatch.setattr("src.dividends.connect_to_database", lambda: connection)
 
     assert get_total_dividends_by_holding(1) == 0
+
+
+def test_create_dividend(monkeypatch) -> None:
+    """Test creating a dividend record."""
+    connection = create_test_connection()
+
+    class TestConnection:
+        """Keep the test connection open for post-insert verification."""
+
+        def execute(self, *args):
+            return connection.execute(*args)
+
+        def commit(self):
+            connection.commit()
+
+        def rollback(self):
+            connection.rollback()
+
+        def close(self):
+            pass
+
+    test_connection = TestConnection()
+    monkeypatch.setattr(
+        "src.dividends.connect_to_database",
+        lambda: test_connection,
+    )
+
+    dividend_id = create_dividend(1, "2026-04-01", 150, "NTD")
+
+    dividend = connection.execute(
+        """
+        SELECT holding_id, received_date, amount, currency
+        FROM dividends
+        WHERE id = ?
+        """,
+        (dividend_id,),
+    ).fetchone()
+
+    assert dividend_id is not None
+    assert dividend == (1, "2026-04-01", 150, "NTD")
+    connection.close()
