@@ -2,8 +2,8 @@
 
 from typing import cast
 
-from .holdings import get_holding, list_holdings
 from .dividends import get_total_dividends_by_holding
+from .holdings import get_holding, list_holdings
 
 
 def calculate_average_cost(
@@ -276,7 +276,7 @@ def get_portfolio_details(
         market_prices: Current prices keyed by holding symbol.
 
     Returns:
-        A list containing each holding's symbol and calculated metrics.
+        A list containing each holding's symbol, dividend total, and metrics.
     """
     stored_holdings = list_holdings()
 
@@ -294,6 +294,12 @@ def get_portfolio_details(
 
         symbol = holding[2]
 
-        holding_details.append({"symbol": symbol, "metrics": metrics})
+        holding_details.append(
+            {
+                "symbol": symbol,
+                "dividend_total": dividend_total,
+                "metrics": metrics,
+            }
+        )
 
     return holding_details

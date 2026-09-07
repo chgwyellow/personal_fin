@@ -46,10 +46,12 @@ def test_get_portfolio_details(monkeypatch) -> None:
     result = get_portfolio_details({"TEST1": 120, "TEST2": 450})
 
     assert result[0]["symbol"] == "TEST1"
+    assert result[0]["dividend_total"] == 0
     metrics_1 = cast(dict[str, int | float | None], result[0]["metrics"])
     metrics_2 = cast(dict[str, int | float | None], result[1]["metrics"])
     assert metrics_1["market_value"] == 1200
     assert result[1]["symbol"] == "TEST2"
+    assert result[1]["dividend_total"] == 0
     assert metrics_2["market_value"] == 2250
 
 
