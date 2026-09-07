@@ -3,6 +3,7 @@
 import sqlite3
 
 from .database import connect_to_database
+from .holdings import update_holding
 
 
 def create_recurring_investment(
@@ -245,6 +246,48 @@ def delete_recurring_investment_execution(
     connection = connect_to_database()
 
     try:
+        execution = connection.execute(
+            """
+            SELECT holding_id, status, shares_purchased, invested_amount
+            FROM recurring_investment_executions
+            WHERE id = ?
+            """,
+            (execution_id,),
+        ).fetchone()
+
+        if execution is None:
+            return False
+
+        holding_id, status, shares_purchased, invested_amount = execution
+
+        if status != "confirmed":
+            return False
+
+        holding = connection.execute(
+            """
+            SELECT shares, total_cost
+            FROM holdings
+            WHERE id = ?
+            """,
+            (holding_id,),
+        ).fetchone()
+
+        if holding is None:
+            return False
+
+        current_shares, total_cost = holding
+        new_shares = current_shares - shares_purchased
+        new_cost = total_cost - invested_amount
+
+        connection.execute(
+            """
+            UPDATE holdings
+            SET shares = ?, total_cost = ?
+            WHERE id = ?
+            """,
+            (new_shares, new_cost, holding_id),
+        )
+
         cursor = connection.execute(
             """
             DELETE FROM recurring_investment_executions
@@ -252,7 +295,6 @@ def delete_recurring_investment_execution(
             """,
             (execution_id,),
         )
-
         connection.commit()
 
         deleted = cursor.rowcount > 0

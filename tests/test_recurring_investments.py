@@ -320,6 +320,10 @@ def test_delete_recurring_investment_execution(monkeypatch, tmp_path) -> None:
     database_path = tmp_path / "test_recurring_investments.db"
     connection = create_test_connection(str(database_path))
     connection.execute(
+        "INSERT INTO holdings (id, shares, total_cost) VALUES (?, ?, ?)",
+        (1, 20, 10000),
+    )
+    connection.execute(
         """
         INSERT INTO recurring_investment_executions
         (id, holding_id, execution_date, invested_amount, currency,
@@ -336,6 +340,14 @@ def test_delete_recurring_investment_execution(monkeypatch, tmp_path) -> None:
     )
 
     assert delete_recurring_investment_execution(1) is True
+
+    connection = sqlite3.connect(database_path)
+    holding = connection.execute(
+        "SELECT shares, total_cost FROM holdings WHERE id = 1"
+    ).fetchone()
+    connection.close()
+
+    assert holding == (10, 5000)
 
 
 def test_delete_missing_recurring_investment_execution(
