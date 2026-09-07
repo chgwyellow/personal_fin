@@ -102,3 +102,24 @@ def test_get_portfolio_details_with_missing_price(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="Missing market price"):
         get_portfolio_details({})
+
+
+def test_get_portfolio_details_uses_latest_stored_price(monkeypatch) -> None:
+    """Test using the latest stored price when current price is missing."""
+    stored_holdings = [
+        (1, 1, "TEST1", "Test One", "TW", "NTD", 10, 1000),
+    ]
+    monkeypatch.setattr("src.portfolio.list_holdings", lambda: stored_holdings)
+    monkeypatch.setattr(
+        "src.portfolio.get_latest_market_price",
+        lambda symbol, market: 120,
+    )
+    monkeypatch.setattr(
+        "src.portfolio.get_total_dividends_by_holding",
+        lambda holding_id: 0,
+    )
+
+    result = get_portfolio_details({})
+    metrics = cast(dict[str, int | float | None], result[0]["metrics"])
+
+    assert metrics["market_value"] == 1200

@@ -292,7 +292,7 @@ def get_portfolio_details(
 
         # * If there is no current price
         if market_price is None:
-            market_price = get_latest_market_price(symbol)
+            market_price = get_latest_market_price(symbol, holding[4])
 
         # * If there is still no any price
         if market_price is None:

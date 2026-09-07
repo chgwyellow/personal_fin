@@ -6,8 +6,17 @@ from .database import connect_to_database
 
 def get_latest_market_price(
     symbol: str,
+    market: str,
 ) -> int | float | None:
-    """Retrieve the latest stored market price for a symbol."""
+    """Retrieve the latest stored market price for a symbol and market.
+
+    Args:
+        symbol: The security symbol.
+        market: The market code, such as ``TW`` or ``US``.
+
+    Returns:
+        The latest stored price, or ``None`` if no price exists.
+    """
     connection = connect_to_database()
 
     try:
@@ -16,10 +25,11 @@ def get_latest_market_price(
             SELECT price
             FROM market_prices
             WHERE symbol = ?
+            AND market = ?
             ORDER BY observed_at DESC, id DESC
             LIMIT 1
             """,
-            (symbol,),
+            (symbol, market),
         ).fetchone()
     finally:
         connection.close()

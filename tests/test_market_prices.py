@@ -44,4 +44,4 @@ def test_create_multiple_market_prices(monkeypatch, tmp_path) -> None:
     assert first_id is not None
     assert second_id is not None
     assert first_id != second_id
-    assert get_latest_market_price("AAPL") == 182
+    assert get_latest_market_price("AAPL", "US") == 182
