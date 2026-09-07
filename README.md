@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/Python-3.14+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-local-003B57.svg?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![uv](https://img.shields.io/badge/managed%20by-uv-6C5CE7.svg)](https://docs.astral.sh/uv/)
-[![Tests](https://img.shields.io/badge/tests-30%20passing-success.svg)](https://github.com/chgwyellow/personal_fin)
+[![Tests](https://img.shields.io/badge/tests-42%20passing-success.svg)](https://github.com/chgwyellow/personal_fin)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Make your finances easier to understand.

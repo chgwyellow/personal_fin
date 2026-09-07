@@ -199,6 +199,34 @@ def test_create_recurring_investment_execution(monkeypatch, tmp_path) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("invested_amount", 0),
+        ("shares_purchased", 0),
+        ("purchase_price", 0),
+        ("currency", "NT"),
+        ("status", "unknown"),
+    ],
+)
+def test_create_execution_rejects_invalid_input(field, value) -> None:
+    """Test invalid execution input raises ValueError."""
+    execution_data = {
+        "recurring_investment_id": None,
+        "holding_id": 1,
+        "execution_date": "2026-09-07",
+        "invested_amount": 5000,
+        "currency": "NTD",
+        "shares_purchased": 10,
+        "purchase_price": 500,
+        "status": "confirmed",
+    }
+    execution_data[field] = value
+
+    with pytest.raises(ValueError):
+        create_recurring_investment_execution(**execution_data)
+
+
 def test_list_recurring_investment_executions_by_holding(
     monkeypatch,
     tmp_path,
