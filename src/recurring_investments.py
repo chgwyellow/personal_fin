@@ -195,3 +195,27 @@ def create_recurring_investment_execution(
         connection.close()
 
     return created_id
+
+
+def list_recurring_investment_executions_by_holding(
+    holding_id: int,
+) -> list[tuple]:
+    """List execution records for one investment holding by date."""
+    connection = connect_to_database()
+
+    try:
+        recurring_investment_executions = connection.execute(
+            """
+            SELECT id, recurring_investment_id, holding_id, execution_date,
+                   invested_amount, currency, shares_purchased, purchase_price,
+                   status, notes
+            FROM recurring_investment_executions
+            WHERE holding_id = ?
+            ORDER BY execution_date, id
+            """,
+            (holding_id,),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    return recurring_investment_executions

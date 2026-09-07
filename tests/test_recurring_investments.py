@@ -5,6 +5,7 @@ import pytest
 from src.recurring_investments import (
     create_recurring_investment,
     create_recurring_investment_execution,
+    list_recurring_investment_executions_by_holding,
     update_recurring_investment,
 )
 
@@ -182,3 +183,39 @@ def test_create_recurring_investment_execution(monkeypatch, tmp_path) -> None:
         "confirmed",
         "Test execution",
     )
+
+
+def test_list_recurring_investment_executions_by_holding(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Test listing execution records by holding and date."""
+    database_path = tmp_path / "test_recurring_investments.db"
+    connection = create_test_connection(str(database_path))
+    connection.executemany(
+        """
+        INSERT INTO recurring_investment_executions
+        (id, recurring_investment_id, holding_id, execution_date,
+         invested_amount, currency, shares_purchased, purchase_price,
+         status, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (1, 1, 1, "2026-06-01", 5000, "NTD", 10, 500, "confirmed", None),
+            (2, 1, 1, "2026-04-01", 5000, "NTD", 10, 500, "confirmed", None),
+            (3, 2, 2, "2026-05-01", 3000, "NTD", 6, 500, "confirmed", None),
+        ],
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(
+        "src.recurring_investments.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    result = list_recurring_investment_executions_by_holding(1)
+
+    assert result == [
+        (2, 1, 1, "2026-04-01", 5000, "NTD", 10, 500, "confirmed", None),
+        (1, 1, 1, "2026-06-01", 5000, "NTD", 10, 500, "confirmed", None),
+    ]
