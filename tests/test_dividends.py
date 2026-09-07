@@ -150,3 +150,11 @@ def test_delete_dividend(monkeypatch) -> None:
     monkeypatch.setattr("src.dividends.connect_to_database", lambda: connection)
 
     assert delete_dividend(1) is True
+
+
+def test_delete_missing_dividend(monkeypatch) -> None:
+    """Test deleting a dividend record that does not exist."""
+    connection = create_test_connection()
+    monkeypatch.setattr("src.dividends.connect_to_database", lambda: connection)
+
+    assert delete_dividend(999) is False
