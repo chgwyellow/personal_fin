@@ -5,6 +5,7 @@ import pytest
 from src.recurring_investments import (
     create_recurring_investment,
     create_recurring_investment_execution,
+    delete_recurring_investment_execution,
     list_recurring_investment_executions_by_holding,
     update_recurring_investment,
 )
@@ -219,3 +220,42 @@ def test_list_recurring_investment_executions_by_holding(
         (2, 1, 1, "2026-04-01", 5000, "NTD", 10, 500, "confirmed", None),
         (1, 1, 1, "2026-06-01", 5000, "NTD", 10, 500, "confirmed", None),
     ]
+
+
+def test_delete_recurring_investment_execution(monkeypatch, tmp_path) -> None:
+    """Test deleting an existing recurring investment execution."""
+    database_path = tmp_path / "test_recurring_investments.db"
+    connection = create_test_connection(str(database_path))
+    connection.execute(
+        """
+        INSERT INTO recurring_investment_executions
+        (id, holding_id, execution_date, invested_amount, currency,
+         shares_purchased, purchase_price, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (1, 1, "2026-09-07", 5000, "NTD", 10, 500, "confirmed"),
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(
+        "src.recurring_investments.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    assert delete_recurring_investment_execution(1) is True
+
+
+def test_delete_missing_recurring_investment_execution(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Test deleting an execution that does not exist."""
+    database_path = tmp_path / "test_recurring_investments.db"
+    connection = create_test_connection(str(database_path))
+    connection.close()
+    monkeypatch.setattr(
+        "src.recurring_investments.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    assert delete_recurring_investment_execution(999) is False

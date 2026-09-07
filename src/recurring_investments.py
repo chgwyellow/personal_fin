@@ -219,3 +219,30 @@ def list_recurring_investment_executions_by_holding(
         connection.close()
 
     return recurring_investment_executions
+
+
+def delete_recurring_investment_execution(
+    execution_id: int,
+) -> bool:
+    """Delete one recurring investment execution record by its ID."""
+    connection = connect_to_database()
+
+    try:
+        cursor = connection.execute(
+            """
+            DELETE FROM recurring_investment_executions
+            WHERE id = ?
+            """,
+            (execution_id,),
+        )
+
+        connection.commit()
+
+        deleted = cursor.rowcount > 0
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+    return deleted
