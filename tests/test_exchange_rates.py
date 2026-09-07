@@ -1,6 +1,10 @@
 import sqlite3
 
-from src.exchange_rates import create_exchange_rate, get_latest_exchange_rate
+from src.exchange_rates import (
+    convert_amount,
+    create_exchange_rate,
+    get_latest_exchange_rate,
+)
 
 
 def create_test_connection(database: str) -> sqlite3.Connection:
@@ -54,3 +58,9 @@ def test_get_latest_exchange_rate_without_records(monkeypatch, tmp_path) -> None
     )
 
     assert get_latest_exchange_rate("USD", "NTD") is None
+
+
+def test_convert_amount() -> None:
+    """Test converting an amount with an exchange rate."""
+    assert convert_amount(100, 32.5) == 3250
+    assert convert_amount(0, 32.5) == 0

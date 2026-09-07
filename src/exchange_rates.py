@@ -1,4 +1,4 @@
-"""Queries for stored currency exchange rate records."""
+"""Database operations and calculations for currency exchange rates."""
 
 import sqlite3
 
@@ -65,3 +65,12 @@ def create_exchange_rate(
         connection.close()
 
     return created_id
+
+
+def convert_amount(
+    amount: int | float,
+    exchange_rate: int | float,
+) -> int | float:
+    """Convert an amount using the provided exchange rate."""
+
+    return amount * exchange_rate
