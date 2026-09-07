@@ -34,11 +34,14 @@ def get_total_assets_ntd() -> int | float:
             AND currency = 'USD'
             """
         )
-        exchange_rate = get_latest_exchange_rate("USD", "NTD")
-        if exchange_rate is None:
-            raise ValueError("Missing exchange rate for USD to NTD")
+        total_assets_usd = cursor.fetchone()[0]
 
-        total_assets_usd = convert_amount(cursor.fetchone()[0], exchange_rate)
+        if total_assets_usd != 0:
+            exchange_rate = get_latest_exchange_rate("USD", "NTD")
+            if exchange_rate is None:
+                raise ValueError("Missing exchange rate for USD to NTD")
+
+            total_assets_usd = convert_amount(total_assets_usd, exchange_rate)
 
         total_assets = total_assets_ntd + total_assets_usd
     finally:
@@ -74,16 +77,17 @@ def get_net_worth_ntd() -> int | float:
 
 
 def get_assets_total_by_group_ntd(asset_group: str) -> int | float:
-    """Sum active NTD asset values for the specified group.
+    """Calculate an asset group's active value converted to NTD.
 
     Args:
         asset_group: The group to sum, such as ``liquid_asset``,
             ``liquid_investment``, or ``other_asset``.
 
     Returns:
-        The total stored value, or zero if no matching assets exist.
-        Inactive and foreign-currency assets are excluded.
-        No FX conversion is performed.
+        The group's total value in NTD, or zero if no matching assets exist.
+
+    Raises:
+        ValueError: If USD assets exist but no USD-to-NTD rate is available.
     """
     connection = connect_to_database()
 
@@ -98,11 +102,32 @@ def get_assets_total_by_group_ntd(asset_group: str) -> int | float:
             """,
             (asset_group,),
         )
-        grouped_asset = cursor.fetchone()
+        grouped_asset_ntd = cursor.fetchone()[0]
+
+        cursor = connection.execute(
+            """
+            SELECT COALESCE(SUM(value), 0)
+            FROM assets
+            WHERE is_active = 1
+            AND currency = 'USD'
+            AND asset_group = ?
+            """,
+            (asset_group,),
+        )
+        grouped_asset_usd = cursor.fetchone()[0]
+
+        if grouped_asset_usd != 0:
+            exchange_rate = get_latest_exchange_rate("USD", "NTD")
+            if exchange_rate is None:
+                raise ValueError("Missing exchange rate for USD to NTD")
+
+            grouped_asset_usd = convert_amount(grouped_asset_usd, exchange_rate)
+
+        total_grouped_assets = grouped_asset_ntd + grouped_asset_usd
     finally:
         connection.close()
 
-    return grouped_asset[0]
+    return total_grouped_assets
 
 
 def get_liabilities_total_by_group_ntd(
