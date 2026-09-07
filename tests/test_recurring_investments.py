@@ -6,6 +6,8 @@ from src.recurring_investments import (
     create_recurring_investment,
     create_recurring_investment_execution,
     delete_recurring_investment_execution,
+    deactivate_recurring_investment,
+    list_recurring_investments_by_holding,
     list_recurring_investment_executions_by_holding,
     update_recurring_investment,
 )
@@ -25,7 +27,8 @@ def create_test_connection(database: str) -> sqlite3.Connection:
             execution_day INTEGER NOT NULL,
             start_date TEXT NOT NULL,
             end_date TEXT,
-            notes TEXT
+            notes TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1
         )
         """
     )
@@ -259,3 +262,80 @@ def test_delete_missing_recurring_investment_execution(
     )
 
     assert delete_recurring_investment_execution(999) is False
+
+
+def test_deactivate_recurring_investment(monkeypatch, tmp_path) -> None:
+    """Test deactivating a recurring investment plan."""
+    database_path = tmp_path / "test_recurring_investments.db"
+    connection = create_test_connection(str(database_path))
+    connection.execute(
+        """
+        INSERT INTO recurring_investments
+        (id, holding_id, planned_amount, currency, frequency,
+         execution_day, start_date, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (1, 1, 5000, "NTD", "monthly", 15, "2026-09-01", "Test plan"),
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(
+        "src.recurring_investments.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    assert deactivate_recurring_investment(1) is True
+
+    connection = sqlite3.connect(database_path)
+    plan = connection.execute(
+        "SELECT planned_amount, frequency, is_active FROM recurring_investments"
+    ).fetchone()
+    connection.close()
+
+    assert plan == (5000, "monthly", 0)
+
+
+def test_deactivate_missing_recurring_investment(monkeypatch, tmp_path) -> None:
+    """Test deactivating a recurring investment plan that does not exist."""
+    database_path = tmp_path / "test_recurring_investments.db"
+    connection = create_test_connection(str(database_path))
+    connection.close()
+    monkeypatch.setattr(
+        "src.recurring_investments.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    assert deactivate_recurring_investment(999) is False
+
+
+def test_list_recurring_investments_include_inactive(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Test listing active and inactive recurring investment plans."""
+    database_path = tmp_path / "test_recurring_investments.db"
+    connection = create_test_connection(str(database_path))
+    connection.executemany(
+        """
+        INSERT INTO recurring_investments
+        (id, holding_id, planned_amount, currency, frequency,
+         execution_day, start_date, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (1, 1, 5000, "NTD", "monthly", 15, "2026-01-01", 1),
+            (2, 1, 6000, "NTD", "monthly", 20, "2026-02-01", 0),
+        ],
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(
+        "src.recurring_investments.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    active_plans = list_recurring_investments_by_holding(1)
+    all_plans = list_recurring_investments_by_holding(1, include_inactive=True)
+
+    assert [plan[0] for plan in active_plans] == [1]
+    assert [plan[0] for plan in all_plans] == [1, 2]

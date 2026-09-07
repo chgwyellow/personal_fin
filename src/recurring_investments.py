@@ -51,20 +51,37 @@ def create_recurring_investment(
 
 def list_recurring_investments_by_holding(
     holding_id: int,
+    include_inactive: bool = False,
 ) -> list[tuple]:
-    """List recurring investment plans for one holding."""
+    """List recurring investment plans for one holding.
+
+    Args:
+        holding_id: The holding ID.
+        include_inactive: Whether to include deactivated plans.
+
+    Returns:
+        Matching recurring investment plans.
+    """
     connection = connect_to_database()
 
     try:
-        recurring_investments = connection.execute(
-            """
+        query = """
             SELECT id, holding_id, planned_amount, currency,
-            frequency, execution_day, start_date, end_date, notes
+                frequency, execution_day, start_date, end_date, notes
             FROM recurring_investments
             WHERE holding_id = ?
-            ORDER BY start_date
-            """,
-            (holding_id,),
+        """
+
+        parameters = [holding_id]
+
+        if not include_inactive:
+            query += " AND is_active = 1"
+
+        query += " ORDER BY start_date"
+
+        recurring_investments = connection.execute(
+            query,
+            parameters,
         ).fetchall()
     finally:
         connection.close()
