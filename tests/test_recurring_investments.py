@@ -9,6 +9,7 @@ from src.recurring_investments import (
     deactivate_recurring_investment,
     list_recurring_investments_by_holding,
     list_recurring_investment_executions_by_holding,
+    record_recurring_investment_execution,
     update_recurring_investment,
 )
 
@@ -29,6 +30,15 @@ def create_test_connection(database: str) -> sqlite3.Connection:
             end_date TEXT,
             notes TEXT,
             is_active INTEGER NOT NULL DEFAULT 1
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE holdings (
+            id INTEGER PRIMARY KEY,
+            shares NUMERIC NOT NULL,
+            total_cost NUMERIC NOT NULL
         )
         """
     )
@@ -223,6 +233,86 @@ def test_list_recurring_investment_executions_by_holding(
         (2, 1, 1, "2026-04-01", 5000, "NTD", 10, 500, "confirmed", None),
         (1, 1, 1, "2026-06-01", 5000, "NTD", 10, 500, "confirmed", None),
     ]
+
+
+def test_record_recurring_investment_execution_updates_holding(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Test a confirmed execution updates shares and total cost."""
+    database_path = tmp_path / "test_recurring_investments.db"
+    connection = create_test_connection(str(database_path))
+    connection.execute(
+        "INSERT INTO holdings (id, shares, total_cost) VALUES (?, ?, ?)",
+        (1, 10, 1000),
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(
+        "src.recurring_investments.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    execution_id = record_recurring_investment_execution(
+        recurring_investment_id=None,
+        holding_id=1,
+        execution_date="2026-09-07",
+        invested_amount=500,
+        currency="NTD",
+        shares_purchased=5,
+        purchase_price=100,
+    )
+
+    connection = sqlite3.connect(database_path)
+    holding = connection.execute(
+        "SELECT shares, total_cost FROM holdings WHERE id = 1"
+    ).fetchone()
+    execution = connection.execute(
+        "SELECT id, status FROM recurring_investment_executions WHERE id = ?",
+        (execution_id,),
+    ).fetchone()
+    connection.close()
+
+    assert holding == (15, 1500)
+    assert execution == (execution_id, "confirmed")
+
+
+def test_record_cancelled_execution_does_not_update_holding(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Test a cancelled execution does not change the holding."""
+    database_path = tmp_path / "test_recurring_investments.db"
+    connection = create_test_connection(str(database_path))
+    connection.execute(
+        "INSERT INTO holdings (id, shares, total_cost) VALUES (?, ?, ?)",
+        (1, 10, 1000),
+    )
+    connection.commit()
+    connection.close()
+    monkeypatch.setattr(
+        "src.recurring_investments.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    record_recurring_investment_execution(
+        recurring_investment_id=None,
+        holding_id=1,
+        execution_date="2026-09-07",
+        invested_amount=500,
+        currency="NTD",
+        shares_purchased=5,
+        purchase_price=100,
+        status="cancelled",
+    )
+
+    connection = sqlite3.connect(database_path)
+    holding = connection.execute(
+        "SELECT shares, total_cost FROM holdings WHERE id = 1"
+    ).fetchone()
+    connection.close()
+
+    assert holding == (10, 1000)
 
 
 def test_delete_recurring_investment_execution(monkeypatch, tmp_path) -> None:

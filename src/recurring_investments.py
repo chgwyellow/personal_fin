@@ -291,3 +291,78 @@ def deactivate_recurring_investment(
         connection.close()
 
     return deactivated
+
+
+def record_recurring_investment_execution(
+    recurring_investment_id: int | None,
+    holding_id: int,
+    execution_date: str,
+    invested_amount: int | float,
+    currency: str,
+    shares_purchased: int | float,
+    purchase_price: int | float,
+    status: str = "confirmed",
+    notes: str | None = None,
+) -> int | None:
+    """Record an execution and update the related holding atomically."""
+    connection = connect_to_database()
+
+    try:
+        holding = connection.execute(
+            """
+            SELECT shares, total_cost
+            FROM holdings
+            WHERE id = ?
+            """,
+            (holding_id,),
+        ).fetchone()
+
+        if holding is None:
+            return None
+
+        cursor = connection.execute(
+            """
+            INSERT INTO recurring_investment_executions
+            (recurring_investment_id, holding_id, execution_date,
+             invested_amount, currency, shares_purchased, purchase_price,
+             status, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                recurring_investment_id,
+                holding_id,
+                execution_date,
+                invested_amount,
+                currency,
+                shares_purchased,
+                purchase_price,
+                status,
+                notes,
+            ),
+        )
+
+        if status == "confirmed":
+            current_shares, current_cost = holding
+            new_shares = current_shares + shares_purchased
+            new_cost = current_cost + invested_amount
+
+            connection.execute(
+                """
+                UPDATE holdings
+                SET shares = ?, total_cost = ?
+                WHERE id = ?
+                """,
+                (new_shares, new_cost, holding_id),
+            )
+
+        connection.commit()
+        execution_id = cursor.lastrowid
+
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()
+
+    return execution_id
