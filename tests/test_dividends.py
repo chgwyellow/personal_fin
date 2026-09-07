@@ -5,9 +5,11 @@ import pytest
 from src.dividends import create_dividend, get_total_dividends_by_holding
 
 
-def create_test_connection() -> sqlite3.Connection:
-    """Create an in-memory database containing the dividends table."""
-    connection = sqlite3.connect(":memory:")
+def create_test_connection(
+    database: str = ":memory:",
+) -> sqlite3.Connection:
+    """Create a test database containing the holdings and dividends tables."""
+    connection = sqlite3.connect(database)
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute(
         """
@@ -64,33 +66,20 @@ def test_get_total_dividends_without_records(monkeypatch) -> None:
     assert get_total_dividends_by_holding(1) == 0
 
 
-def test_create_dividend(monkeypatch) -> None:
+def test_create_dividend(monkeypatch, tmp_path) -> None:
     """Test creating a dividend record."""
-    connection = create_test_connection()
-
-    class TestConnection:
-        """Keep the test connection open for post-insert verification."""
-
-        def execute(self, *args):
-            return connection.execute(*args)
-
-        def commit(self):
-            connection.commit()
-
-        def rollback(self):
-            connection.rollback()
-
-        def close(self):
-            pass
-
-    test_connection = TestConnection()
+    database_path = tmp_path / "test_dividends.db"
+    setup_connection = create_test_connection(str(database_path))
+    setup_connection.commit()
+    setup_connection.close()
     monkeypatch.setattr(
         "src.dividends.connect_to_database",
-        lambda: test_connection,
+        lambda: sqlite3.connect(database_path),
     )
 
     dividend_id = create_dividend(1, "2026-04-01", 150, "NTD")
 
+    connection = sqlite3.connect(database_path)
     dividend = connection.execute(
         """
         SELECT holding_id, received_date, amount, currency
