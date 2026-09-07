@@ -4,6 +4,7 @@ from typing import cast
 
 from .dividends import get_total_dividends_by_holding
 from .holdings import get_holding, list_holdings
+from .market_prices import get_latest_market_price
 
 
 def calculate_average_cost(
@@ -285,14 +286,23 @@ def get_portfolio_details(
     for holding in stored_holdings:
         shares = holding[6]
         total_cost = holding[7]
-        market_price = market_prices[holding[2]]
+
+        symbol = holding[2]
+        market_price = market_prices.get(symbol)
+
+        # * If there is no current price
+        if market_price is None:
+            market_price = get_latest_market_price(symbol)
+
+        # * If there is still no any price
+        if market_price is None:
+            raise ValueError(f"Missing market price for symbol: {symbol}")
+
         dividend_total = get_total_dividends_by_holding(holding[0])
 
         metrics = calculate_holding_metrics(
             shares, total_cost, market_price, dividend_total
         )
-
-        symbol = holding[2]
 
         holding_details.append(
             {

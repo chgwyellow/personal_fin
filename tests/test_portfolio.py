@@ -94,11 +94,11 @@ def test_get_portfolio_details_with_dividends(monkeypatch) -> None:
 
 
 def test_get_portfolio_details_with_missing_price(monkeypatch) -> None:
-    """Test that a missing market price raises KeyError."""
+    """Test that a missing market price raises ValueError."""
     stored_holdings = [
         (1, 1, "TEST1", "Test One", "TW", "NTD", 10, 1000),
     ]
     monkeypatch.setattr("src.portfolio.list_holdings", lambda: stored_holdings)
 
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="Missing market price"):
         get_portfolio_details({})
