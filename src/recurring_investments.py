@@ -3,7 +3,6 @@
 import sqlite3
 
 from .database import connect_to_database
-from .holdings import update_holding
 
 
 def create_recurring_investment(
@@ -17,6 +16,15 @@ def create_recurring_investment(
     notes: str | None = None,
 ) -> int | None:
     """Create a recurring investment plan for a holding."""
+    if planned_amount <= 0:
+        raise ValueError("planned_amount must be greater than zero.")
+
+    if execution_day < 1 or execution_day > 31:
+        raise ValueError("execution_day must be between 1 and 31.")
+
+    if len(currency) != 3:
+        raise ValueError("currency must contain exactly three characters.")
+
     connection = connect_to_database()
 
     try:
@@ -182,6 +190,17 @@ def create_recurring_investment_execution(
     Returns:
         The ID of the newly created execution record.
     """
+    if invested_amount <= 0:
+        raise ValueError("invested_amount must be greater than zero.")
+    if shares_purchased <= 0:
+        raise ValueError("shares_purchased must be greater than zero.")
+    if purchase_price <= 0:
+        raise ValueError("purchase_price must be greater than zero.")
+    if len(currency) != 3:
+        raise ValueError("currency must contain exactly three characters.")
+    if status not in ("confirmed", "reversed", "cancelled"):
+        raise ValueError("status must be confirmed, reversed, or cancelled.")
+
     connection = connect_to_database()
 
     try:

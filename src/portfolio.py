@@ -203,7 +203,7 @@ def get_holding_metrics_by_id(
     if (holding := get_holding(holding_id)) is None:
         return None
     else:
-        shares, total_cost = holding[-2:]
+        _, _, _, _, _, _, shares, total_cost = holding
 
     return calculate_holding_metrics(shares, total_cost, market_price, dividend_total)
 
@@ -293,21 +293,18 @@ def get_portfolio_details(
     holding_details: list[dict[str, object]] = []
 
     for holding in stored_holdings:
-        shares = holding[6]
-        total_cost = holding[7]
-
-        symbol = holding[2]
+        holding_id, _, symbol, _, market, currency, shares, total_cost = holding
         market_price = market_prices.get(symbol)
 
         # * If there is no current price
         if market_price is None:
-            market_price = get_latest_market_price(symbol, holding[4])
+            market_price = get_latest_market_price(symbol, market)
 
         # * If there is still no any price
         if market_price is None:
             raise ValueError(f"Missing market price for symbol: {symbol}")
 
-        dividend_total = get_total_dividends_by_holding(holding[0])
+        dividend_total = get_total_dividends_by_holding(holding_id)
 
         metrics = calculate_holding_metrics(
             shares, total_cost, market_price, dividend_total
