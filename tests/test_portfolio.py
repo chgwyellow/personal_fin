@@ -1,5 +1,7 @@
 from typing import cast
 
+import pytest
+
 from src.portfolio import (
     calculate_holding_metrics,
     calculate_portfolio_totals,
@@ -71,3 +73,32 @@ def test_get_portfolio_summary(monkeypatch) -> None:
         "total_capital_gain_or_loss": 450,
         "total_gain_or_loss": 450,
     }
+
+
+def test_get_portfolio_details_with_dividends(monkeypatch) -> None:
+    """Test that dividends are included in holding metrics."""
+    stored_holdings = [
+        (1, 1, "TEST1", "Test One", "TW", "NTD", 10, 1000),
+    ]
+    monkeypatch.setattr("src.portfolio.list_holdings", lambda: stored_holdings)
+    monkeypatch.setattr(
+        "src.portfolio.get_total_dividends_by_holding",
+        lambda holding_id: 50,
+    )
+
+    result = get_portfolio_details({"TEST1": 120})
+    metrics = cast(dict[str, int | float | None], result[0]["metrics"])
+
+    assert result[0]["dividend_total"] == 50
+    assert metrics["total_gain_or_loss"] == 250
+
+
+def test_get_portfolio_details_with_missing_price(monkeypatch) -> None:
+    """Test that a missing market price raises KeyError."""
+    stored_holdings = [
+        (1, 1, "TEST1", "Test One", "TW", "NTD", 10, 1000),
+    ]
+    monkeypatch.setattr("src.portfolio.list_holdings", lambda: stored_holdings)
+
+    with pytest.raises(KeyError):
+        get_portfolio_details({})
