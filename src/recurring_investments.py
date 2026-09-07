@@ -246,3 +246,31 @@ def delete_recurring_investment_execution(
         connection.close()
 
     return deleted
+
+
+def deactivate_recurring_investment(
+    recurring_investment_id: int,
+) -> bool:
+    """Deactivate a recurring investment plan without deleting its history."""
+    connection = connect_to_database()
+
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE recurring_investments
+            SET is_active = 0
+            WHERE id = ?
+            """,
+            (recurring_investment_id,),
+        )
+
+        connection.commit()
+
+        deactivated = cursor.rowcount > 0
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+    return deactivated
