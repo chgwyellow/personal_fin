@@ -2,7 +2,11 @@ import sqlite3
 
 import pytest
 
-from src.balance_sheet import get_total_assets_ntd
+from src.balance_sheet import (
+    get_assets_total_by_group_ntd,
+    get_balance_sheet_summary_ntd,
+    get_total_assets_ntd,
+)
 
 
 def create_test_database(database: str) -> sqlite3.Connection:
@@ -30,6 +34,18 @@ def create_test_database(database: str) -> sqlite3.Connection:
             rate NUMERIC NOT NULL,
             observed_at TEXT NOT NULL,
             source TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE liabilities (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            liability_group TEXT NOT NULL,
+            category TEXT NOT NULL,
+            currency TEXT NOT NULL,
+            balance NUMERIC NOT NULL
         )
         """
     )
@@ -101,3 +117,92 @@ def test_get_total_assets_ntd_without_exchange_rate(monkeypatch, tmp_path) -> No
 
     with pytest.raises(ValueError, match="Missing exchange rate"):
         get_total_assets_ntd()
+
+
+def test_get_assets_total_by_group_ntd_with_usd_assets(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Test converting grouped USD assets to NTD."""
+    database_path = tmp_path / "test_balance_sheet.db"
+    setup_connection = create_test_database(str(database_path))
+    setup_connection.executemany(
+        """
+        INSERT INTO assets
+        (name, asset_group, category, currency, value, is_active)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            ("NTD cash", "liquid_asset", "cash", "NTD", 1000, 1),
+            ("USD cash", "liquid_asset", "cash", "USD", 100, 1),
+        ],
+    )
+    setup_connection.execute(
+        """
+        INSERT INTO exchange_rates
+        (base_currency, quote_currency, rate, observed_at, source)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        ("USD", "NTD", 32.5, "2026-09-01", "test"),
+    )
+    setup_connection.commit()
+    setup_connection.close()
+
+    monkeypatch.setattr(
+        "src.balance_sheet.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+    monkeypatch.setattr(
+        "src.exchange_rates.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    assert get_assets_total_by_group_ntd("liquid_asset") == 4250
+
+
+def test_get_balance_sheet_summary_ntd(monkeypatch, tmp_path) -> None:
+    """Test the balance sheet summary with converted USD assets."""
+    database_path = tmp_path / "test_balance_sheet.db"
+    setup_connection = create_test_database(str(database_path))
+    setup_connection.execute(
+        """
+        INSERT INTO assets
+        (name, asset_group, category, currency, value, is_active)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        ("USD investment", "liquid_investment", "stock", "USD", 100, 1),
+    )
+    setup_connection.execute(
+        """
+        INSERT INTO liabilities
+        (name, liability_group, category, currency, balance)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        ("Credit card", "short_term", "credit_card", "NTD", 500),
+    )
+    setup_connection.execute(
+        """
+        INSERT INTO exchange_rates
+        (base_currency, quote_currency, rate, observed_at, source)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        ("USD", "NTD", 32.5, "2026-09-01", "test"),
+    )
+    setup_connection.commit()
+    setup_connection.close()
+
+    monkeypatch.setattr(
+        "src.balance_sheet.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+    monkeypatch.setattr(
+        "src.exchange_rates.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    result = get_balance_sheet_summary_ntd()
+
+    assert result["total_assets"] == 3250
+    assert result["liquid_investments"] == 3250
+    assert result["total_liabilities"] == 500
+    assert result["net_worth"] == 2750

@@ -70,7 +70,7 @@ def get_total_liabilities_ntd() -> int | float:
 
 
 def get_net_worth_ntd() -> int | float:
-    """Return NTD-only assets minus liabilities, excluding foreign currencies."""
+    """Return total assets in NTD minus NTD liabilities."""
     net_worth_ntd = get_total_assets_ntd() - get_total_liabilities_ntd()
 
     return net_worth_ntd
@@ -203,8 +203,8 @@ def get_free_cash_flow_ntd() -> int | float:
     """Calculate the project's custom free-cash-flow metric in NTD.
 
     Returns:
-        NTD net worth minus active NTD assets in the ``other_asset`` group.
-        The result may be negative. Foreign currencies are excluded.
+        NTD net worth minus active assets in the ``other_asset`` group.
+        Foreign-currency assets are converted to NTD first.
 
     This project-specific metric does not measure cash flows over a period.
     """
@@ -215,12 +215,12 @@ def get_free_cash_flow_ntd() -> int | float:
 
 
 def get_cash_ratio_ntd() -> float | None:
-    """Calculate the cash ratio using NTD-only values.
+    """Calculate the cash ratio using values converted to NTD.
 
     Returns:
-        Active NTD liquid assets divided by total NTD liabilities.
+        Active liquid assets in NTD divided by total NTD liabilities.
         Returns None when total liabilities are zero.
-        Foreign currencies are excluded.
+        Foreign-currency assets are converted to NTD first.
     """
     liquid_asset = get_assets_total_by_group_ntd("liquid_asset")
     liabilities = get_total_liabilities_ntd()
@@ -254,17 +254,17 @@ def calculate_net_worth_growth_rate(
 
 
 def get_asset_group_ratio_ntd(asset_group: str) -> float | None:
-    """Calculate an asset group's share of total active NTD assets.
+    """Calculate an asset group's share of total active assets.
 
     Args:
         asset_group: The group to measure, such as ``liquid_asset``,
             ``liquid_investment``, or ``other_asset``.
 
     Returns:
-        The group's NTD value divided by total active NTD assets.
+        The group's NTD value divided by total active assets in NTD.
         Returns None when total assets are zero.
         Returns zero if the group has no assets but total assets are positive.
-        Inactive and foreign-currency assets are excluded.
+        Foreign-currency assets are converted to NTD first.
     """
     total_assets = get_total_assets_ntd()
 
@@ -302,20 +302,21 @@ def get_liability_group_ratio_ntd(
 
 
 def get_balance_sheet_summary_ntd() -> dict[str, int | float | None]:
-    """Build a balance-sheet summary using NTD-only values.
+    """Build a balance-sheet summary with asset values converted to NTD.
 
     Returns:
         A dictionary containing:
-            total_assets: Total active NTD asset value.
+            total_assets: Total active asset value in NTD.
             total_liabilities: Total NTD liability balance.
             net_worth: Total assets minus total liabilities.
             liability_ratio: Liabilities divided by assets, or None
                 when total assets are zero.
-            liquid_assets: Total active NTD liquid asset value.
-            liquid_investments: Total active NTD liquid investment value.
-            other_assets: Total active NTD other asset value.
+            liquid_assets: Total active liquid asset value in NTD.
+            liquid_investments: Total active liquid investment value in NTD.
+            other_assets: Total active other asset value in NTD.
 
-        Foreign-currency assets and liabilities are excluded.
+        Foreign-currency assets are converted to NTD. Liabilities are limited
+        to NTD balances.
     """
 
     total_assets = get_total_assets_ntd()
@@ -339,7 +340,7 @@ def get_balance_sheet_summary_ntd() -> dict[str, int | float | None]:
 def get_balance_sheet_indicators_ntd(
     previous_net_worth: int | float | None = None,
 ) -> dict[str, int | float | None]:
-    """Build all NTD balance-sheet indicators.
+    """Build all balance-sheet indicators with values represented in NTD.
 
     Args:
         previous_net_worth: Optional previous-period net worth used to
