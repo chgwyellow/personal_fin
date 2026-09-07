@@ -1,4 +1,4 @@
-"""Database operations for recurring investment plans."""
+"""Database operations for recurring investment plans and executions."""
 
 import sqlite3
 
@@ -109,11 +109,7 @@ def update_recurring_investment(
         "end_date": end_date,
         "notes": notes,
     }
-    fields = [
-        f"{field} = ?"
-        for field, value in updates.items()
-        if value is not None
-    ]
+    fields = [f"{field} = ?" for field, value in updates.items() if value is not None]
     values = [value for value in updates.values() if value is not None]
 
     if not fields:
@@ -139,3 +135,63 @@ def update_recurring_investment(
         connection.close()
 
     return updated
+
+
+def create_recurring_investment_execution(
+    recurring_investment_id: int | None,
+    holding_id: int,
+    execution_date: str,
+    invested_amount: int | float,
+    currency: str,
+    shares_purchased: int | float,
+    purchase_price: int | float,
+    status: str = "confirmed",
+    notes: str | None = None,
+) -> int | None:
+    """Create one actual recurring investment execution record.
+
+    Args:
+        recurring_investment_id: The related plan ID, if applicable.
+        holding_id: The holding that received the purchased shares.
+        execution_date: The date the investment was executed.
+        invested_amount: The amount invested in the original currency.
+        currency: The investment currency.
+        shares_purchased: The number of shares or units purchased.
+        purchase_price: The purchase price per share or unit.
+        status: The execution status.
+        notes: Optional notes about the execution.
+
+    Returns:
+        The ID of the newly created execution record.
+    """
+    connection = connect_to_database()
+
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO recurring_investment_executions
+            (recurring_investment_id, holding_id, execution_date, invested_amount,
+             currency, shares_purchased, purchase_price, status, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                recurring_investment_id,
+                holding_id,
+                execution_date,
+                invested_amount,
+                currency,
+                shares_purchased,
+                purchase_price,
+                status,
+                notes,
+            ),
+        )
+        connection.commit()
+        created_id = cursor.lastrowid
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+    return created_id
