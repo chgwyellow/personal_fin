@@ -45,3 +45,21 @@ def test_create_multiple_market_prices(monkeypatch, tmp_path) -> None:
     assert second_id is not None
     assert first_id != second_id
     assert get_latest_market_price("AAPL", "US") == 182
+
+
+def test_get_latest_market_price_by_market(monkeypatch, tmp_path) -> None:
+    """Test that the same symbol is separated by market."""
+    database_path = tmp_path / "test_market_prices.db"
+    setup_connection = create_test_connection(str(database_path))
+    setup_connection.close()
+
+    monkeypatch.setattr(
+        "src.market_prices.connect_to_database",
+        lambda: sqlite3.connect(database_path),
+    )
+
+    create_market_price("TEST", "TW", 100, "NTD", "2026-09-01", "test")
+    create_market_price("TEST", "US", 200, "USD", "2026-09-01", "test")
+
+    assert get_latest_market_price("TEST", "TW") == 100
+    assert get_latest_market_price("TEST", "US") == 200
