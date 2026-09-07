@@ -3,6 +3,7 @@
 from typing import cast
 
 from .holdings import get_holding, list_holdings
+from .dividends import get_total_dividends_by_holding
 
 
 def calculate_average_cost(
@@ -260,8 +261,7 @@ def get_portfolio_summary(
     """
     details = get_portfolio_details(market_prices)
     holding_metrics = [
-        cast(dict[str, int | float | None], detail["metrics"])
-        for detail in details
+        cast(dict[str, int | float | None], detail["metrics"]) for detail in details
     ]
 
     return calculate_portfolio_totals(holding_metrics)
@@ -286,8 +286,11 @@ def get_portfolio_details(
         shares = holding[6]
         total_cost = holding[7]
         market_price = market_prices[holding[2]]
+        dividend_total = get_total_dividends_by_holding(holding[0])
 
-        metrics = calculate_holding_metrics(shares, total_cost, market_price)
+        metrics = calculate_holding_metrics(
+            shares, total_cost, market_price, dividend_total
+        )
 
         symbol = holding[2]
 
