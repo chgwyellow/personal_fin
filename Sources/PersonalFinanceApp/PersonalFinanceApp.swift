@@ -31,12 +31,16 @@ final class AppModel: ObservableObject {
     )
     @Published private(set) var assets: [DatabaseManager.AssetRecord] = []
     @Published private(set) var liabilities: [DatabaseManager.LiabilityRecord] = []
+    @Published private(set) var holdingRecords: [DatabaseManager.HoldingRecord] = []
+    @Published private(set) var recurringRecords: [DatabaseManager.RecurringRecord] = []
     private let databaseManager: DatabaseManager?
 
     init() {
         databaseManager = try? DatabaseManager()
         refreshAssets()
         refreshLiabilities()
+        refreshHoldings()
+        refreshRecurringInvestments()
     }
 
     func refreshAssets() {
@@ -69,6 +73,76 @@ final class AppModel: ObservableObject {
             ntdValue: ntdValue
         )
         refreshAssets()
+        refreshHoldings()
+    }
+
+    func refreshHoldings() {
+        guard let databaseManager else { return }
+        do {
+            holdingRecords = try databaseManager.listHoldings()
+        } catch {
+            NSLog("FinTrack holdings query failed: %@", error.localizedDescription)
+        }
+    }
+
+    func refreshRecurringInvestments() {
+        guard let databaseManager else { return }
+        do {
+            recurringRecords = try databaseManager.listRecurringInvestments()
+        } catch {
+            NSLog("FinTrack recurring investment query failed: %@", error.localizedDescription)
+        }
+    }
+
+    func createHolding(
+        assetName: String,
+        assetGroup: String,
+        category: String,
+        symbol: String,
+        securityName: String,
+        market: String,
+        instrumentType: String,
+        etfType: String?,
+        currency: String,
+        shares: Double,
+        totalCost: Double,
+        ntdValue: Double,
+        isRecurringHolding: Bool
+    ) throws {
+        guard let databaseManager else {
+            throw DatabaseManager.DatabaseError.openFailed("Database is unavailable")
+        }
+        let assetID = try databaseManager.createAsset(
+            name: assetName,
+            assetGroup: assetGroup,
+            category: category,
+            currency: currency,
+            value: totalCost,
+            ntdValue: ntdValue
+        )
+        let holdingID = try databaseManager.createHolding(
+            assetID: assetID,
+            symbol: symbol,
+            securityName: securityName,
+            market: market,
+            instrumentType: instrumentType,
+            etfType: etfType,
+            currency: currency,
+            shares: shares,
+            totalCost: totalCost
+        )
+        if isRecurringHolding {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withFullDate]
+            try databaseManager.createRecurringInvestment(
+                holdingID: holdingID,
+                currency: currency,
+                startDate: formatter.string(from: Date())
+            )
+        }
+        refreshAssets()
+        refreshHoldings()
+        refreshRecurringInvestments()
     }
 
     func refreshLiabilities() {
@@ -209,6 +283,7 @@ enum L10n {
         "Overview": "總覽", "Income Statement": "損益表", "Portfolio": "投資組合",
         "Recurring Investment": "定期定額", "Foreign Currency": "外幣", "Stock": "股票",
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
+        "No recurring investments": "目前沒有定期定額",
         "Total Assets": "總資產", "Total Liabilities": "總負債", "Net Worth": "淨值",
         "Total Assets Details": "總資產明細", "Total Liabilities Details": "總負債明細",
         "Liquid Asset": "流動資產", "Liquid Investment": "流動性投資", "Long-term Investment": "長期投資", "Other Asset": "其他資產",
@@ -275,6 +350,7 @@ struct DashboardView: View {
 
 struct SidebarView: View {
     @Binding var selectedPage: String
+    @EnvironmentObject private var appModel: AppModel
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @State private var recurringExpanded = false
     @State private var currencyExpanded = false
@@ -288,8 +364,15 @@ struct SidebarView: View {
 
                 expandablePage("Recurring Investment", systemImage: "calendar.badge.clock", isExpanded: $recurringExpanded)
                 if recurringExpanded {
-                    page("Stock", systemImage: "building.columns", isChild: true)
-                    page("ETF", systemImage: "chart.bar.xaxis", isChild: true)
+                    if appModel.recurringRecords.isEmpty {
+                        Text(L10n.text("No recurring investments", language: appLanguage))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 22)
+                    } else {
+                        ForEach(appModel.recurringRecords) { recurring in
+                            page(recurring.securityName, systemImage: "chart.bar.xaxis", isChild: true)
+                        }
+                    }
                 }
 
                 expandablePage("Foreign Currency", systemImage: "globe.americas.fill", isExpanded: $currencyExpanded)
@@ -533,7 +616,6 @@ struct AddAssetSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var name = ""
     @State private var assetGroup = "liquid_asset"
-    @State private var category = "General"
     @State private var currency = "NTD"
     @State private var amount = ""
     @State private var ntdCost = ""
@@ -570,9 +652,6 @@ struct AddAssetSheet: View {
                 }
             }
             .pickerStyle(.menu)
-
-            TextField(L10n.text("Subcategory", language: appLanguage), text: $category)
-                .textFieldStyle(.roundedBorder)
 
             Picker(L10n.text("Currency", language: appLanguage), selection: $currency) {
                 ForEach(currencies, id: \.self) { currency in
@@ -640,7 +719,7 @@ struct AddAssetSheet: View {
             try appModel.createAsset(
                 name: name,
                 assetGroup: assetGroup,
-                category: category,
+                category: name,
                 currency: currency,
                 value: originalValue,
                 ntdValue: ntdValue
@@ -751,19 +830,16 @@ struct EditAssetSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appModel: AppModel
     @State private var name: String
-    @State private var category: String
     @State private var currency: String
     @State private var amount: String
     @State private var ntdCost: String
     @State private var errorMessage: String?
 
-    private let categories = ["Liquid Asset", "Liquid Investment", "Other Asset"]
     private let currencies = ["NTD", "USD", "JPY"]
 
     init(asset: DatabaseManager.AssetRecord) {
         self.asset = asset
         _name = State(initialValue: asset.name)
-        _category = State(initialValue: asset.category)
         _currency = State(initialValue: asset.currency)
         _amount = State(initialValue: String(asset.value))
         _ntdCost = State(initialValue: String(asset.ntdValue))
@@ -773,10 +849,6 @@ struct EditAssetSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Edit Asset").font(.title2.weight(.bold))
             TextField("Asset name", text: $name).textFieldStyle(.roundedBorder)
-            Picker("Category", selection: $category) {
-                ForEach(categories, id: \.self) { Text($0).tag($0) }
-            }
-            .pickerStyle(.menu)
             Picker("Currency", selection: $currency) {
                 ForEach(currencies, id: \.self) { Text($0).tag($0) }
             }
@@ -817,8 +889,8 @@ struct EditAssetSheet: View {
             try appModel.updateAsset(
                 id: asset.id,
                 name: name,
-                assetGroup: category.replacingOccurrences(of: " ", with: "_").lowercased(),
-                category: category,
+                assetGroup: asset.assetGroup,
+                category: name,
                 currency: currency,
                 value: value,
                 ntdValue: ntdValue
@@ -911,42 +983,203 @@ struct EditLiabilitySheet: View {
     }
 }
 
-struct PortfolioView: View {
-    private let holdings = [
-        PortfolioHolding(symbol: "VT", quantity: "53.3636", average: "$110.93", price: "$161.73", capitalPL: "$2,710.97", totalPL: "$2,932.63", capitalRate: "45.80%", totalRate: "49.54%", value: "$8,630.49", cost: "$5,919.52", weight: "17.13%", totalReturn: "NT$1,010,188", fx: "31.6858"),
-        PortfolioHolding(symbol: "BND", quantity: "34.8085", average: "$73.05", price: "$71.95", capitalPL: "-$38.45", totalPL: "$129.77", capitalRate: "-1.51%", totalRate: "5.10%", value: "$2,504.47", cost: "$2,542.92", weight: "4.97%", totalReturn: "", fx: ""),
-        PortfolioHolding(symbol: "MONSTER", quantity: "40", average: "$25.67", price: "$43.82", capitalPL: "$726.01", totalPL: "$726.01", capitalRate: "70.71%", totalRate: "70.71%", value: "$1,752.80", cost: "$1,026.79", weight: "3.48%", totalReturn: "", fx: ""),
-        PortfolioHolding(symbol: "PALANTIR", quantity: "3", average: "$26.07", price: "$174.33", capitalPL: "$444.67", totalPL: "$444.67", capitalRate: "567.76%", totalRate: "567.76%", value: "$522.99", cost: "$78.32", weight: "1.04%", totalReturn: "", fx: ""),
-        PortfolioHolding(symbol: "NVIDIA", quantity: "30", average: "$25.36", price: "$230.36", capitalPL: "$6,150.03", totalPL: "$6,159.94", capitalRate: "808.40%", totalRate: "809.70%", value: "$6,910.80", cost: "$760.77", weight: "13.71%", totalReturn: "", fx: ""),
-        PortfolioHolding(symbol: "VINFAST", quantity: "50", average: "$4.25", price: "$3.08", capitalPL: "-$58.82", totalPL: "-$58.82", capitalRate: "-27.64%", totalRate: "-27.64%", value: "$154.00", cost: "$212.82", weight: "0.31%", totalReturn: "", fx: ""),
-        PortfolioHolding(symbol: "富邦公司治理", quantity: "5,822", average: "NT$33.39", price: "NT$94.40", capitalPL: "NT$355,192", totalPL: "NT$405,875", capitalRate: "183.05%", totalRate: "209.17%", value: "NT$549,597", cost: "NT$194,404", weight: "34.42%", totalReturn: "", fx: ""),
-        PortfolioHolding(symbol: "星宇航空", quantity: "2,000", average: "NT$24.15", price: "NT$20.60", capitalPL: "-NT$7,150", totalPL: "-NT$7,150", capitalRate: "-14.79%", totalRate: "-14.79%", value: "NT$41,200", cost: "NT$48,350", weight: "2.58%", totalReturn: "", fx: ""),
-        PortfolioHolding(symbol: "柏承", quantity: "1,000", average: "NT$41.25", price: "NT$49.55", capitalPL: "NT$8,280", totalPL: "NT$8,280", capitalRate: "20.06%", totalRate: "20.06%", value: "NT$49,550", cost: "NT$41,270", weight: "3.10%", totalReturn: "", fx: ""),
-        PortfolioHolding(symbol: "兆聯實業", quantity: "429", average: "NT$115.40", price: "NT$717.00", capitalPL: "NT$258,085", totalPL: "NT$275,735", capitalRate: "521.30%", totalRate: "556.95%", value: "NT$307,593", cost: "NT$49,508", weight: "19.26%", totalReturn: "", fx: "")
+struct AddHoldingSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var subcategory = ""
+    @State private var symbol = ""
+    @State private var securityName = ""
+    @State private var assetGroup = "liquid_investment"
+    @State private var market = "TW"
+    @State private var instrumentType = "stock"
+    @State private var etfType = "equity"
+    @State private var currency = "NTD"
+    @State private var shares = ""
+    @State private var totalCost = ""
+    @State private var ntdValue = ""
+    @State private var isRecurringHolding = false
+    @State private var errorMessage: String?
+
+    private let groups = [
+        ("liquid_investment", "Liquid Investment"),
+        ("long_term_investment", "Long-term Investment")
     ]
 
+    private var availableSubcategories: [String] {
+        Array(Set(appModel.assets
+            .filter { $0.assetGroup == assetGroup }
+            .map(\.name)))
+            .sorted(by: >)
+    }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add Holding").font(.title2.weight(.bold))
+            TextField("Symbol", text: $symbol).textFieldStyle(.roundedBorder)
+            TextField("Security name", text: $securityName).textFieldStyle(.roundedBorder)
+
+            Picker("Asset group", selection: $assetGroup) {
+                ForEach(groups, id: \.0) { group in
+                    Text(group.1).tag(group.0)
+                }
+            }
+            .pickerStyle(.menu)
+            if availableSubcategories.isEmpty {
+                Text("Create a subcategory from Overview first.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("Subcategory", selection: $subcategory) {
+                    ForEach(availableSubcategories, id: \.self) { category in
+                        Text(category).tag(category)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
+            Picker("Market", selection: $market) {
+                Text("Taiwan").tag("TW")
+                Text("United States").tag("US")
+            }
+            .pickerStyle(.menu)
+            Picker("Type", selection: $instrumentType) {
+                Text("Stock").tag("stock")
+                Text("ETF").tag("etf")
+            }
+            .pickerStyle(.segmented)
+            if instrumentType == "etf" {
+                Picker("ETF type", selection: $etfType) {
+                    Text("Equity ETF").tag("equity")
+                    Text("Bond ETF").tag("bond")
+                }
+                .pickerStyle(.menu)
+            }
+            Picker("Currency", selection: $currency) {
+                Text("NTD").tag("NTD")
+                Text("USD").tag("USD")
+            }
+            .pickerStyle(.menu)
+            Toggle("This holding will be used for recurring investment", isOn: $isRecurringHolding)
+            TextField("Shares", text: $shares).textFieldStyle(.roundedBorder)
+            TextField("Total cost", text: $totalCost).textFieldStyle(.roundedBorder)
+            if currency != "NTD" {
+                TextField("NTD value", text: $ntdValue).textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 440)
+        .onAppear {
+            if subcategory.isEmpty {
+                subcategory = availableSubcategories.first ?? ""
+            }
+        }
+        .onChange(of: assetGroup) { _, _ in
+            subcategory = availableSubcategories.first ?? ""
+        }
+    }
+
+    private func save() {
+        let sharesText = shares.isEmpty && isRecurringHolding ? "0" : shares
+        let costText = totalCost.isEmpty && isRecurringHolding ? "0" : totalCost
+        guard !symbol.isEmpty, !securityName.isEmpty,
+              !subcategory.isEmpty, let shareValue = Double(sharesText),
+              let cost = Double(costText), shareValue >= 0, cost >= 0,
+              isRecurringHolding || (shareValue > 0 && cost > 0) else {
+            errorMessage = "Complete the holding fields with valid values."
+            return
+        }
+        let convertedValue: Double
+        if currency == "NTD" {
+            convertedValue = cost
+        } else if let enteredNTDValue = Double(ntdValue), enteredNTDValue >= 0 {
+            convertedValue = enteredNTDValue
+        } else {
+            errorMessage = "Enter the NTD value for a foreign holding."
+            return
+        }
+        do {
+            try appModel.createHolding(
+                assetName: securityName,
+                assetGroup: assetGroup,
+                category: subcategory,
+                symbol: symbol,
+                securityName: securityName,
+                market: market,
+                instrumentType: instrumentType,
+                etfType: instrumentType == "etf" ? etfType : nil,
+                currency: currency,
+                shares: shareValue,
+                totalCost: cost,
+                ntdValue: convertedValue,
+                isRecurringHolding: isRecurringHolding
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct PortfolioView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @State private var showingAddHolding = false
+
+    var body: some View {
+        let displayedHoldings = appModel.holdingRecords.map(makePortfolioHolding)
+
         VStack(spacing: 16) {
             HStack(spacing: 16) {
-                PortfolioMetricCard(title: "TOTAL P&L", value: "+NT$29,548.1", detail: "+140.3% on cost", tint: .green)
-                PortfolioMetricCard(title: "TODAY", value: "-NT$64.0", detail: "-0.1%", tint: .red)
-                PortfolioMetricCard(title: "INVESTED", value: "NT$667,537", detail: "10 holdings", tint: .primary)
+                PortfolioMetricCard(title: "TOTAL P&L", value: "—", detail: "No market prices", tint: .primary)
+                PortfolioMetricCard(title: "TODAY", value: "—", detail: "No market prices", tint: .primary)
+                PortfolioMetricCard(title: "INVESTED", value: "—", detail: "\(displayedHoldings.count) holdings", tint: .primary)
             }
             .padding(.horizontal, 24)
 
             ScrollView {
                 VStack(spacing: 16) {
-                    AllocationCard()
-                    ScrollView(.horizontal) {
-                        PositionsCard(holdings: holdings)
-                            .frame(minWidth: 1040)
-                    }
-                    .scrollIndicators(.visible)
+                    AllocationPlaceholderCard()
+                    PositionsCard(holdings: displayedHoldings, onAdd: { showingAddHolding = true })
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
         }
+        .sheet(isPresented: $showingAddHolding) {
+            AddHoldingSheet()
+        }
+        .onAppear {
+            appModel.refreshHoldings()
+        }
+    }
+
+    private func makePortfolioHolding(_ holding: DatabaseManager.HoldingRecord) -> PortfolioHolding {
+        let average = holding.shares > 0
+            ? "\(holding.currency) \(String(format: "%.2f", holding.totalCost / holding.shares))"
+            : "—"
+        return PortfolioHolding(
+            symbol: holding.symbol,
+            quantity: String(format: "%.4f", holding.shares),
+            average: average,
+            price: "—",
+            capitalPL: "—",
+            totalPL: "—",
+            capitalRate: "—",
+            totalRate: "—",
+            value: "—",
+            cost: "\(holding.currency) \(holding.totalCost)",
+            weight: "—",
+            totalReturn: "",
+            fx: ""
+        )
     }
 }
 
@@ -972,6 +1205,7 @@ struct PortfolioMetricCard: View {
 
 struct PositionsCard: View {
     let holdings: [PortfolioHolding]
+    let onAdd: () -> Void
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
@@ -979,7 +1213,7 @@ struct PositionsCard: View {
             HStack {
                 Text(L10n.text("HOLDINGS", language: appLanguage)).font(.caption.weight(.bold)).foregroundStyle(.secondary)
                 Spacer()
-                Button(L10n.text("Add", language: appLanguage), systemImage: "plus") { }
+                Button(L10n.text("Add", language: appLanguage), systemImage: "plus", action: onAdd)
                     .buttonStyle(.plain)
                     .font(.callout.weight(.semibold))
             }
@@ -987,13 +1221,15 @@ struct PositionsCard: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            HStack(spacing: 18) {
+            HStack(spacing: 12) {
                 Text(L10n.text("SYMBOL", language: appLanguage))
-                    .frame(width: 350, alignment: .leading)
-                Text(L10n.text("LAST", language: appLanguage)).frame(width: 130, alignment: .trailing)
-                Text(L10n.text("CHANGE", language: appLanguage)).frame(width: 130, alignment: .trailing)
-                Text(L10n.text("VALUE", language: appLanguage)).frame(width: 150, alignment: .trailing)
-                Text(L10n.text("P&L", language: appLanguage)).frame(width: 150, alignment: .trailing)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(L10n.text("LAST", language: appLanguage))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L10n.text("VALUE", language: appLanguage))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L10n.text("P&L", language: appLanguage))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .font(.caption.weight(.bold))
             .foregroundStyle(.secondary)
@@ -1002,8 +1238,14 @@ struct PositionsCard: View {
 
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
-                    ForEach(holdings) { holding in
-                        positionRow(holding)
+                    if holdings.isEmpty {
+                        Text("No holdings yet. Click Add to create one.")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 160)
+                    } else {
+                        ForEach(holdings) { holding in
+                            positionRow(holding)
+                        }
                     }
                 }
             }
@@ -1014,7 +1256,7 @@ struct PositionsCard: View {
     }
 
     private func positionRow(_ holding: PortfolioHolding) -> some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 12) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(holding.symbol).font(.headline)
@@ -1022,26 +1264,36 @@ struct PositionsCard: View {
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            .frame(width: 350, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(holding.price).font(.headline).frame(width: 130, alignment: .trailing)
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(holding.dayChange).font(.callout.weight(.semibold))
-                    .foregroundStyle(holding.isNegative ? .red : .green)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background((holding.isNegative ? Color.red : Color.green).opacity(0.12), in: Capsule())
-                Text(holding.dayRate).font(.caption).foregroundStyle(holding.isNegative ? .red : .green)
-            }
-            .frame(width: 130, alignment: .trailing)
-            Text(holding.value).font(.headline).frame(width: 150, alignment: .trailing)
+            Text(holding.price).font(.headline)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            Text(holding.value).font(.headline)
+                .frame(maxWidth: .infinity, alignment: .trailing)
             VStack(alignment: .trailing, spacing: 3) {
                 Text(holding.totalPL).font(.headline).foregroundStyle(holding.isNegative ? .red : .green)
                 Text(holding.totalRate).font(.caption).foregroundStyle(holding.isNegative ? .red : .green)
             }
-            .frame(width: 150, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 20).padding(.vertical, 8)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1) }
+    }
+}
+
+struct AllocationPlaceholderCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ALLOCATION")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text("Allocation will appear after holdings and market prices are available.")
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
     }
 }
 

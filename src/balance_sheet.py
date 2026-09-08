@@ -81,7 +81,8 @@ def get_assets_total_by_group_ntd(asset_group: str) -> int | float:
 
     Args:
         asset_group: The group to sum, such as ``liquid_asset``,
-            ``liquid_investment``, or ``other_asset``.
+            ``liquid_investment``, ``long_term_investment``, or
+            ``other_asset``.
 
     Returns:
         The group's total value in NTD, or zero if no matching assets exist.
@@ -258,7 +259,8 @@ def get_asset_group_ratio_ntd(asset_group: str) -> float | None:
 
     Args:
         asset_group: The group to measure, such as ``liquid_asset``,
-            ``liquid_investment``, or ``other_asset``.
+            ``liquid_investment``, ``long_term_investment``, or
+            ``other_asset``.
 
     Returns:
         The group's NTD value divided by total active assets in NTD.
@@ -313,6 +315,7 @@ def get_balance_sheet_summary_ntd() -> dict[str, int | float | None]:
                 when total assets are zero.
             liquid_assets: Total active liquid asset value in NTD.
             liquid_investments: Total active liquid investment value in NTD.
+            long_term_investments: Total active long-term investment value in NTD.
             other_assets: Total active other asset value in NTD.
 
         Foreign-currency assets are converted to NTD. Liabilities are limited
@@ -333,6 +336,9 @@ def get_balance_sheet_summary_ntd() -> dict[str, int | float | None]:
         "liability_ratio": liability_ratio,
         "liquid_assets": get_assets_total_by_group_ntd("liquid_asset"),
         "liquid_investments": get_assets_total_by_group_ntd("liquid_investment"),
+        "long_term_investments": get_assets_total_by_group_ntd(
+            "long_term_investment"
+        ),
         "other_assets": get_assets_total_by_group_ntd("other_asset"),
     }
 
@@ -376,6 +382,9 @@ def get_balance_sheet_indicators_ntd(
         "total_assets": total_assets,
         "liquid_assets": get_assets_total_by_group_ntd("liquid_asset"),
         "liquid_investments": get_assets_total_by_group_ntd("liquid_investment"),
+        "long_term_investments": get_assets_total_by_group_ntd(
+            "long_term_investment"
+        ),
         "other_assets": other_asset,
         "total_liabilities": total_liabilities,
         "net_worth": net_worth,

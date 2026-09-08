@@ -50,6 +50,24 @@ final class DatabaseManager {
         let netWorth: Double
     }
 
+    struct HoldingRecord: Identifiable {
+        let id: Int64
+        let symbol: String
+        let securityName: String
+        let market: String
+        let instrumentType: String
+        let etfType: String?
+        let currency: String
+        let shares: Double
+        let totalCost: Double
+    }
+
+    struct RecurringRecord: Identifiable {
+        let id: Int64
+        let symbol: String
+        let securityName: String
+    }
+
     enum DatabaseError: LocalizedError {
         case openFailed(String)
         case queryFailed(String)
@@ -146,6 +164,137 @@ final class DatabaseManager {
         }
 
         return sqlite3_last_insert_rowid(database)
+    }
+
+    /// Marks a holding as an active recurring-investment item.
+    func createRecurringInvestment(
+        holdingID: Int64,
+        currency: String,
+        startDate: String
+    ) throws {
+        let sql = """
+        INSERT INTO recurring_investments
+            (holding_id, planned_amount, currency, frequency, execution_day, start_date)
+        VALUES (?, 0, ?, 'monthly', 1, ?);
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+
+        let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_int64(statement, 1, holdingID)
+        sqlite3_bind_text(statement, 2, currency, -1, transientDestructor)
+        sqlite3_bind_text(statement, 3, startDate, -1, transientDestructor)
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+    }
+
+    /// Creates a holding linked to an existing asset record.
+    func createHolding(
+        assetID: Int64,
+        symbol: String,
+        securityName: String,
+        market: String,
+        instrumentType: String,
+        etfType: String?,
+        currency: String,
+        shares: Double,
+        totalCost: Double
+    ) throws -> Int64 {
+        let sql = """
+        INSERT INTO holdings
+            (asset_id, symbol, security_name, market, instrument_type, etf_type,
+             currency, shares, total_cost)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+
+        let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_int64(statement, 1, assetID)
+        sqlite3_bind_text(statement, 2, symbol, -1, transientDestructor)
+        sqlite3_bind_text(statement, 3, securityName, -1, transientDestructor)
+        sqlite3_bind_text(statement, 4, market, -1, transientDestructor)
+        sqlite3_bind_text(statement, 5, instrumentType, -1, transientDestructor)
+        if let etfType {
+            sqlite3_bind_text(statement, 6, etfType, -1, transientDestructor)
+        } else {
+            sqlite3_bind_null(statement, 6)
+        }
+        sqlite3_bind_text(statement, 7, currency, -1, transientDestructor)
+        sqlite3_bind_double(statement, 8, shares)
+        sqlite3_bind_double(statement, 9, totalCost)
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        return sqlite3_last_insert_rowid(database)
+    }
+
+    /// Returns holdings stored in the local database for Portfolio display.
+    func listHoldings() throws -> [HoldingRecord] {
+        let sql = """
+        SELECT id, symbol, security_name, market, instrument_type, etf_type,
+               currency, shares, total_cost
+        FROM holdings
+        ORDER BY security_name COLLATE NOCASE DESC;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+
+        var records: [HoldingRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            records.append(HoldingRecord(
+                id: sqlite3_column_int64(statement, 0),
+                symbol: String(cString: sqlite3_column_text(statement, 1)),
+                securityName: String(cString: sqlite3_column_text(statement, 2)),
+                market: String(cString: sqlite3_column_text(statement, 3)),
+                instrumentType: String(cString: sqlite3_column_text(statement, 4)),
+                etfType: sqlite3_column_type(statement, 5) == SQLITE_NULL
+                    ? nil
+                    : String(cString: sqlite3_column_text(statement, 5)),
+                currency: String(cString: sqlite3_column_text(statement, 6)),
+                shares: sqlite3_column_double(statement, 7),
+                totalCost: sqlite3_column_double(statement, 8)
+            ))
+        }
+        return records
+    }
+
+    /// Returns active recurring investment plans and their holding names.
+    func listRecurringInvestments() throws -> [RecurringRecord] {
+        let sql = """
+        SELECT ri.id, h.symbol, h.security_name
+        FROM recurring_investments ri
+        JOIN holdings h ON h.id = ri.holding_id
+        WHERE ri.is_active = 1
+        ORDER BY h.security_name COLLATE NOCASE DESC;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+
+        var records: [RecurringRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            records.append(RecurringRecord(
+                id: sqlite3_column_int64(statement, 0),
+                symbol: String(cString: sqlite3_column_text(statement, 1)),
+                securityName: String(cString: sqlite3_column_text(statement, 2))
+            ))
+        }
+        return records
     }
 
     /// Returns asset totals in NTD, grouped by the balance-sheet asset group.
@@ -490,6 +639,20 @@ final class DatabaseManager {
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS recurring_investments (
+        id INTEGER PRIMARY KEY,
+        holding_id INTEGER NOT NULL,
+        planned_amount NUMERIC NOT NULL,
+        currency TEXT NOT NULL,
+        frequency TEXT NOT NULL,
+        execution_day INTEGER NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        notes TEXT,
+        FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS snapshots (
