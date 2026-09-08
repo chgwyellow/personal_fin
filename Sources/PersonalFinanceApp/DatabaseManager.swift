@@ -25,8 +25,15 @@ final class DatabaseManager {
 
     struct PortfolioTotals {
         let investedNTD: Double
+        let marketValueNTD: Double
         let totalPLNTD: Double
         let pricedHoldings: Int
+    }
+
+    struct AllocationRecord: Identifiable {
+        let id: Int64
+        let name: String
+        let valueNTD: Double
     }
 
     struct AssetRecord: Identifiable {
@@ -81,10 +88,44 @@ final class DatabaseManager {
         let market: String
     }
 
+    struct RecurringSchedule: Identifiable {
+        let id: Int64
+        let plannedAmount: Double
+        let currency: String
+        let frequency: String
+        let executionDay: Int
+        let startDate: String
+    }
+
     struct RecurringRecord: Identifiable {
         let id: Int64
+        let holdingID: Int64
         let symbol: String
         let securityName: String
+        let schedules: [RecurringSchedule]
+
+        var currency: String { schedules.first?.currency ?? "NTD" }
+        var frequency: String { schedules.first?.frequency ?? "monthly" }
+        var executionDay: Int { schedules.first?.executionDay ?? 1 }
+        var plannedAmount: Double { schedules.reduce(0) { $0 + $1.plannedAmount } }
+    }
+
+    struct RecurringPurchaseRecord: Identifiable {
+        let id: Int64
+        let tradeDate: String
+        let shares: Double
+        let amount: Double
+        let currency: String
+    }
+
+    struct DividendRecord: Identifiable {
+        let id: Int64
+        let holdingID: Int64
+        let symbol: String
+        let securityName: String
+        let payDate: String
+        let amount: Double
+        let currency: String
     }
 
     enum DatabaseError: LocalizedError {
@@ -189,12 +230,15 @@ final class DatabaseManager {
     func createRecurringInvestment(
         holdingID: Int64,
         currency: String,
-        startDate: String
+        startDate: String,
+        plannedAmount: Double = 0,
+        frequency: String = "monthly",
+        executionDay: Int = 1
     ) throws {
         let sql = """
         INSERT INTO recurring_investments
             (holding_id, planned_amount, currency, frequency, execution_day, start_date)
-        VALUES (?, 0, ?, 'monthly', 1, ?);
+        VALUES (?, ?, ?, ?, ?, ?);
         """
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -204,8 +248,11 @@ final class DatabaseManager {
 
         let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
         sqlite3_bind_int64(statement, 1, holdingID)
-        sqlite3_bind_text(statement, 2, currency, -1, transientDestructor)
-        sqlite3_bind_text(statement, 3, startDate, -1, transientDestructor)
+        sqlite3_bind_double(statement, 2, plannedAmount)
+        sqlite3_bind_text(statement, 3, currency, -1, transientDestructor)
+        sqlite3_bind_text(statement, 4, frequency, -1, transientDestructor)
+        sqlite3_bind_int(statement, 5, Int32(executionDay))
+        sqlite3_bind_text(statement, 6, startDate, -1, transientDestructor)
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw DatabaseError.queryFailed(databaseMessage)
@@ -263,13 +310,15 @@ final class DatabaseManager {
         symbol: String,
         securityName: String,
         market: String,
+        instrumentType: String,
+        etfType: String?,
         currency: String,
         shares: Double,
         totalCost: Double
     ) throws {
         let sql = """
         UPDATE holdings
-        SET symbol = ?, security_name = ?, market = ?, currency = ?,
+        SET symbol = ?, security_name = ?, market = ?, instrument_type = ?, etf_type = ?, currency = ?,
             shares = ?, total_cost = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?;
         """
@@ -282,10 +331,16 @@ final class DatabaseManager {
         sqlite3_bind_text(statement, 1, symbol, -1, transientDestructor)
         sqlite3_bind_text(statement, 2, securityName, -1, transientDestructor)
         sqlite3_bind_text(statement, 3, market, -1, transientDestructor)
-        sqlite3_bind_text(statement, 4, currency, -1, transientDestructor)
-        sqlite3_bind_double(statement, 5, shares)
-        sqlite3_bind_double(statement, 6, totalCost)
-        sqlite3_bind_int64(statement, 7, id)
+        sqlite3_bind_text(statement, 4, instrumentType, -1, transientDestructor)
+        if let etfType {
+            sqlite3_bind_text(statement, 5, etfType, -1, transientDestructor)
+        } else {
+            sqlite3_bind_null(statement, 5)
+        }
+        sqlite3_bind_text(statement, 6, currency, -1, transientDestructor)
+        sqlite3_bind_double(statement, 7, shares)
+        sqlite3_bind_double(statement, 8, totalCost)
+        sqlite3_bind_int64(statement, 9, id)
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw DatabaseError.queryFailed(databaseMessage)
         }
@@ -307,10 +362,12 @@ final class DatabaseManager {
                (SELECT price FROM market_prices mp
                 WHERE mp.symbol = h.symbol AND mp.market = h.market
                 ORDER BY mp.observed_at DESC, mp.id DESC LIMIT 1) AS market_price,
-               a.asset_group, a.category
+               a.asset_group, a.category,
+               (SELECT COALESCE(SUM(d.amount), 0) FROM dividends d WHERE d.holding_id = h.id) AS dividends
         FROM holdings AS h
         JOIN assets AS a ON a.id = h.asset_id
-        ORDER BY security_name COLLATE NOCASE DESC;
+        ORDER BY substr(security_name, 1, 1) COLLATE NOCASE ASC,
+                 security_name COLLATE NOCASE ASC;
         """
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -340,7 +397,7 @@ final class DatabaseManager {
                 marketValue: sqlite3_column_type(statement, 10) == SQLITE_NULL
                     ? nil : sqlite3_column_double(statement, 10) * sqlite3_column_double(statement, 8),
                 capitalGainLoss: sqlite3_column_type(statement, 10) == SQLITE_NULL
-                    ? nil : sqlite3_column_double(statement, 10) * sqlite3_column_double(statement, 8) - sqlite3_column_double(statement, 9)
+                    ? nil : sqlite3_column_double(statement, 10) * sqlite3_column_double(statement, 8) - sqlite3_column_double(statement, 9) + sqlite3_column_double(statement, 13)
             ))
         }
         return records
@@ -439,7 +496,8 @@ final class DatabaseManager {
     /// Returns active recurring investment plans and their holding names.
     func listRecurringInvestments() throws -> [RecurringRecord] {
         let sql = """
-        SELECT ri.id, h.symbol, h.security_name
+        SELECT ri.id, ri.holding_id, h.symbol, h.security_name,
+               ri.planned_amount, ri.currency, ri.frequency, ri.execution_day, ri.start_date
         FROM recurring_investments ri
         JOIN holdings h ON h.id = ri.holding_id
         WHERE ri.is_active = 1
@@ -451,15 +509,146 @@ final class DatabaseManager {
             throw DatabaseError.queryFailed(databaseMessage)
         }
 
-        var records: [RecurringRecord] = []
+        var grouped: [Int64: (symbol: String, securityName: String, schedules: [RecurringSchedule])] = [:]
         while sqlite3_step(statement) == SQLITE_ROW {
-            records.append(RecurringRecord(
+            let holdingID = sqlite3_column_int64(statement, 1)
+            let schedule = RecurringSchedule(
                 id: sqlite3_column_int64(statement, 0),
-                symbol: String(cString: sqlite3_column_text(statement, 1)),
-                securityName: String(cString: sqlite3_column_text(statement, 2))
+                plannedAmount: sqlite3_column_double(statement, 4),
+                currency: String(cString: sqlite3_column_text(statement, 5)),
+                frequency: String(cString: sqlite3_column_text(statement, 6)),
+                executionDay: Int(sqlite3_column_int(statement, 7)),
+                startDate: String(cString: sqlite3_column_text(statement, 8))
+            )
+            if var existing = grouped[holdingID] {
+                existing.schedules.append(schedule)
+                grouped[holdingID] = existing
+            } else {
+                grouped[holdingID] = (
+                    String(cString: sqlite3_column_text(statement, 2)),
+                    String(cString: sqlite3_column_text(statement, 3)),
+                    [schedule]
+                )
+            }
+        }
+        return grouped.map { holdingID, value in
+            RecurringRecord(
+                id: holdingID,
+                holdingID: holdingID,
+                symbol: value.symbol,
+                securityName: value.securityName,
+                schedules: value.schedules
+            )
+        }.sorted { $0.securityName.localizedCaseInsensitiveCompare($1.securityName) == .orderedAscending }
+    }
+
+    func deleteRecurringInvestment(id: Int64) throws {
+        try execute("DELETE FROM recurring_investments WHERE id = \(id);")
+    }
+
+    func updateRecurringInvestment(id: Int64, plannedAmount: Double, currency: String, frequency: String, executionDay: Int) throws {
+        let sql = """
+        UPDATE recurring_investments
+        SET planned_amount = ?, currency = ?, frequency = ?, execution_day = ?
+        WHERE id = ?;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw DatabaseError.queryFailed(databaseMessage) }
+        let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_double(statement, 1, plannedAmount)
+        sqlite3_bind_text(statement, 2, currency, -1, destructor)
+        sqlite3_bind_text(statement, 3, frequency, -1, destructor)
+        sqlite3_bind_int(statement, 4, Int32(executionDay))
+        sqlite3_bind_int64(statement, 5, id)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw DatabaseError.queryFailed(databaseMessage) }
+    }
+
+    func addRecurringPurchase(holdingID: Int64, tradeDate: String, shares: Double, amount: Double, currency: String) throws {
+        try insertObservation(
+            sql: "INSERT INTO recurring_purchases (holding_id, trade_date, shares, amount, currency) VALUES (?, ?, ?, ?, ?);",
+            values: [String(holdingID), tradeDate, String(shares), String(amount), currency]
+        )
+        try execute("""
+        UPDATE holdings
+        SET shares = shares + \(shares),
+            total_cost = total_cost + \(amount),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = \(holdingID);
+        """)
+    }
+
+    func listRecurringPurchases(holdingID: Int64) throws -> [RecurringPurchaseRecord] {
+        let sql = """
+        SELECT id, trade_date, shares, amount, currency
+        FROM recurring_purchases
+        WHERE holding_id = ?
+        ORDER BY trade_date DESC, id DESC;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw DatabaseError.queryFailed(databaseMessage) }
+        sqlite3_bind_int64(statement, 1, holdingID)
+        var records: [RecurringPurchaseRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            records.append(RecurringPurchaseRecord(
+                id: sqlite3_column_int64(statement, 0),
+                tradeDate: String(cString: sqlite3_column_text(statement, 1)),
+                shares: sqlite3_column_double(statement, 2),
+                amount: sqlite3_column_double(statement, 3),
+                currency: String(cString: sqlite3_column_text(statement, 4))
             ))
         }
         return records
+    }
+
+    func addDividend(holdingID: Int64, payDate: String, amount: Double, currency: String) throws {
+        try insertObservation(
+            sql: "INSERT INTO dividends (holding_id, pay_date, amount, currency) VALUES (?, ?, ?, ?);",
+            values: [String(holdingID), payDate, String(amount), currency]
+        )
+    }
+
+    func listDividends() throws -> [DividendRecord] {
+        let sql = """
+        SELECT d.id, d.holding_id, h.symbol, h.security_name, d.pay_date, d.amount, d.currency
+        FROM dividends d
+        JOIN holdings h ON h.id = d.holding_id
+        ORDER BY d.pay_date DESC, d.id DESC;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw DatabaseError.queryFailed(databaseMessage) }
+        var records: [DividendRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            records.append(DividendRecord(
+                id: sqlite3_column_int64(statement, 0),
+                holdingID: sqlite3_column_int64(statement, 1),
+                symbol: String(cString: sqlite3_column_text(statement, 2)),
+                securityName: String(cString: sqlite3_column_text(statement, 3)),
+                payDate: String(cString: sqlite3_column_text(statement, 4)),
+                amount: sqlite3_column_double(statement, 5),
+                currency: String(cString: sqlite3_column_text(statement, 6))
+            ))
+        }
+        return records
+    }
+
+    func updateDividend(id: Int64, payDate: String, amount: Double, currency: String) throws {
+        let sql = "UPDATE dividends SET pay_date = ?, amount = ?, currency = ? WHERE id = ?;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw DatabaseError.queryFailed(databaseMessage) }
+        let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, payDate, -1, destructor)
+        sqlite3_bind_double(statement, 2, amount)
+        sqlite3_bind_text(statement, 3, currency, -1, destructor)
+        sqlite3_bind_int64(statement, 4, id)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw DatabaseError.queryFailed(databaseMessage) }
+    }
+
+    func deleteDividend(id: Int64) throws {
+        try execute("DELETE FROM dividends WHERE id = \(id);")
     }
 
     /// Returns asset totals in NTD, grouped by the balance-sheet asset group.
@@ -566,11 +755,24 @@ final class DatabaseManager {
                 WHERE er.base_currency = h.currency AND er.quote_currency = 'NTD'
                 ORDER BY er.observed_at DESC, er.id DESC LIMIT 1), 0) END), 0),
             COALESCE(SUM(CASE WHEN mp.price IS NOT NULL THEN
-                (mp.price * h.shares - h.total_cost) * CASE WHEN h.currency = 'NTD' THEN 1 ELSE COALESCE((
+                mp.price * h.shares * CASE WHEN h.currency = 'NTD' THEN 1 ELSE COALESCE((
                     SELECT er.rate FROM exchange_rates er
                     WHERE er.base_currency = h.currency AND er.quote_currency = 'NTD'
                     ORDER BY er.observed_at DESC, er.id DESC LIMIT 1), 0) END
                 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN mp.price IS NOT NULL THEN
+                (mp.price * h.shares - h.total_cost) * CASE WHEN h.currency = 'NTD' THEN 1 ELSE COALESCE((
+                    SELECT er.rate FROM exchange_rates er
+                    WHERE er.base_currency = h.currency AND er.quote_currency = 'NTD'
+                    ORDER BY er.observed_at DESC, er.id DESC LIMIT 1), 0) END
+                ELSE 0 END), 0)
+            + COALESCE(SUM(
+                (SELECT COALESCE(SUM(d.amount), 0) FROM dividends d WHERE d.holding_id = h.id)
+                * CASE WHEN h.currency = 'NTD' THEN 1 ELSE COALESCE((
+                    SELECT er.rate FROM exchange_rates er
+                    WHERE er.base_currency = h.currency AND er.quote_currency = 'NTD'
+                    ORDER BY er.observed_at DESC, er.id DESC LIMIT 1), 0) END
+            ), 0),
             COUNT(mp.price)
         FROM holdings h
         LEFT JOIN market_prices mp ON mp.id = (
@@ -585,13 +787,47 @@ final class DatabaseManager {
             throw DatabaseError.queryFailed(databaseMessage)
         }
         guard sqlite3_step(statement) == SQLITE_ROW else {
-            return PortfolioTotals(investedNTD: 0, totalPLNTD: 0, pricedHoldings: 0)
+            return PortfolioTotals(investedNTD: 0, marketValueNTD: 0, totalPLNTD: 0, pricedHoldings: 0)
         }
         return PortfolioTotals(
             investedNTD: sqlite3_column_double(statement, 0),
-            totalPLNTD: sqlite3_column_double(statement, 1),
-            pricedHoldings: Int(sqlite3_column_int(statement, 2))
+            marketValueNTD: sqlite3_column_double(statement, 1),
+            totalPLNTD: sqlite3_column_double(statement, 2),
+            pricedHoldings: Int(sqlite3_column_int(statement, 3))
         )
+    }
+
+    /// Returns the five largest priced holdings by current NTD value.
+    func allocationRecords() throws -> [AllocationRecord] {
+        let sql = """
+        SELECT h.id, h.security_name,
+               h.shares * mp.price * CASE WHEN h.currency = 'NTD' THEN 1 ELSE COALESCE((
+                   SELECT er.rate FROM exchange_rates er
+                   WHERE er.base_currency = h.currency AND er.quote_currency = 'NTD'
+                   ORDER BY er.observed_at DESC, er.id DESC LIMIT 1), 0) END AS value_ntd
+        FROM holdings h
+        JOIN market_prices mp ON mp.id = (
+            SELECT mp2.id FROM market_prices mp2
+            WHERE mp2.symbol = h.symbol AND mp2.market = h.market
+            ORDER BY mp2.observed_at DESC, mp2.id DESC LIMIT 1
+        )
+        ORDER BY value_ntd DESC
+        LIMIT 5;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        var records: [AllocationRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            records.append(AllocationRecord(
+                id: sqlite3_column_int64(statement, 0),
+                name: String(cString: sqlite3_column_text(statement, 1)),
+                valueNTD: sqlite3_column_double(statement, 2)
+            ))
+        }
+        return records
     }
 
     /// Inserts one liability and returns the generated database ID.
@@ -924,6 +1160,27 @@ final class DatabaseManager {
         end_date TEXT,
         is_active INTEGER NOT NULL DEFAULT 1,
         notes TEXT,
+        FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS recurring_purchases (
+        id INTEGER PRIMARY KEY,
+        holding_id INTEGER NOT NULL,
+        trade_date TEXT NOT NULL,
+        shares NUMERIC NOT NULL,
+        amount NUMERIC NOT NULL,
+        currency TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS dividends (
+        id INTEGER PRIMARY KEY,
+        holding_id INTEGER NOT NULL,
+        pay_date TEXT NOT NULL,
+        amount NUMERIC NOT NULL,
+        currency TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
     );
 

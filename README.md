@@ -15,17 +15,20 @@ understand your cash, investments, liabilities, and net worth over time. Your
 financial data stays on your own device instead of being sent to a third-party
 service.
 
-## Product Features
+## Current Features
 
-- See total assets, liabilities, net worth, and free cash flow at a glance
-- Organize cash, stocks, ETFs, and other assets clearly
-- Track Taiwan and U.S. investments while keeping portfolio values in their
-  original currencies
-- Convert balance-sheet values with exchange rates and view them in NTD
-- Record dividends and distinguish capital gains from total gains
-- Manage recurring investment plans and their individual executions
-- Keep market-price and exchange-rate history for review and recovery
-- Store everything locally with SQLite for speed, simplicity, and privacy
+- See total assets, liabilities, net worth, and financial indicators
+- Add, edit, and delete assets and liabilities with user-defined subcategories
+- Track Taiwan and U.S. stocks and ETFs while preserving original currencies
+- Fetch market prices and exchange rates into local SQLite history tables
+- Display portfolio market value, allocation, capital gains, and total gains
+- Record dividends separately and include them in total portfolio P&L
+- Manage dividend records with add, edit, and delete actions
+- Manage recurring investment rules per holding, including multiple monthly
+  execution days
+- Record each recurring purchase with its actual date, shares, amount, and
+  currency
+- Keep all financial data locally on the Mac
 
 ## Built With
 
@@ -36,27 +39,64 @@ service.
 - pytest
 - Git / GitHub
 
+## Architecture
+
+- `src/`: existing Python data and analysis code. The current UI work does not
+  modify these Python files.
+- `Sources/PersonalFinanceApp/`: SwiftUI macOS application and local SQLite
+  integration.
+- `data/`: project data and reference files.
+- `dist/FinTrack.app`: locally built macOS application bundle.
+
+The SwiftUI app uses SQLite under:
+
+```text
+~/Library/Application Support/FinTrack/personal_finance.db
+```
+
+Market data currently comes from Yahoo Finance's public quote/search endpoints,
+and exchange rates come from ExchangeRate-API. Results are cached locally; the
+app refreshes data when relevant views load or after a holding is added.
+
 ## Getting Started
 
-The project is currently under development and does not yet provide a desktop
-installer. Clone the repository and set up the environment with uv:
+The project is currently under development and does not yet provide a signed
+installer. To build the macOS app:
 
 ```bash
-git clone https://github.com/chgwyellow/personal_fin.git
-cd personal_fin
-uv sync
+swift build -c release
+mkdir -p dist/FinTrack.app/Contents/MacOS
+cp .build/arm64-apple-macosx/release/PersonalFinanceApp \
+  dist/FinTrack.app/Contents/MacOS/PersonalFinanceApp
+open dist/FinTrack.app
+```
+
+For development, run:
+
+```bash
 swift run PersonalFinanceApp
 ```
 
-The first UI version is a SwiftUI visual prototype with sample values. Database
-integration and interactive data entry will be connected in later iterations.
+The Python environment remains available separately through uv:
+
+```bash
+uv sync
+```
 
 ## Project Information
 
 - Product name: FinTrack
 - Start date: 2026-09-02
-- Current version: 0.1.0
+- Current version: 0.1.0 (development)
 - Development platform: macOS
 - License: MIT License
 
-Automatic market-data integration is currently in development.
+## Known Limitations
+
+- The app is macOS-only and has no signed installer or automatic updater yet.
+- Market data availability depends on the external public APIs and their
+  supported symbols.
+- Recurring investment rules do not execute trades automatically; each actual
+  purchase is entered manually.
+- Exchange transactions and realized foreign-currency gains still require a
+  future dedicated workflow.

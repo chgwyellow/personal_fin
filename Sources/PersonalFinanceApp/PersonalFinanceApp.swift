@@ -33,12 +33,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var assetCategoryTotals: [String: Double] = [:]
     @Published private(set) var portfolioTotals = DatabaseManager.PortfolioTotals(
         investedNTD: 0,
+        marketValueNTD: 0,
         totalPLNTD: 0,
         pricedHoldings: 0
     )
+    @Published private(set) var allocationRecords: [DatabaseManager.AllocationRecord] = []
     @Published private(set) var liabilities: [DatabaseManager.LiabilityRecord] = []
     @Published private(set) var holdingRecords: [DatabaseManager.HoldingRecord] = []
     @Published private(set) var recurringRecords: [DatabaseManager.RecurringRecord] = []
+    @Published private(set) var dividendRecords: [DatabaseManager.DividendRecord] = []
     private let databaseManager: DatabaseManager?
     private let marketDataClient = MarketDataClient()
 
@@ -48,7 +51,9 @@ final class AppModel: ObservableObject {
         refreshLiabilities()
         refreshHoldings()
         refreshRecurringInvestments()
+        refreshDividends()
         refreshPortfolioTotals()
+        refreshAllocations()
     }
 
     func refreshAssets() {
@@ -103,6 +108,100 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func createRecurringRule(
+        holdingID: Int64,
+        plannedAmount: Double,
+        currency: String,
+        frequency: String,
+        executionDay: Int,
+        startDate: String
+    ) throws {
+        guard let databaseManager else {
+            throw DatabaseManager.DatabaseError.openFailed("Database is unavailable")
+        }
+        try databaseManager.createRecurringInvestment(
+            holdingID: holdingID,
+            currency: currency,
+            startDate: startDate,
+            plannedAmount: plannedAmount,
+            frequency: frequency,
+            executionDay: executionDay
+        )
+        refreshRecurringInvestments()
+    }
+
+    func deleteRecurringRule(rule: DatabaseManager.RecurringRecord) {
+        guard let databaseManager else { return }
+        do {
+            for schedule in rule.schedules {
+                try databaseManager.deleteRecurringInvestment(id: schedule.id)
+            }
+            refreshRecurringInvestments()
+        } catch {
+            NSLog("FinTrack recurring investment deletion failed: %@", error.localizedDescription)
+        }
+    }
+
+    func addRecurringPurchase(holdingID: Int64, tradeDate: String, shares: Double, amount: Double, currency: String) throws {
+        guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
+        try databaseManager.addRecurringPurchase(holdingID: holdingID, tradeDate: tradeDate, shares: shares, amount: amount, currency: currency)
+        refreshAssets()
+        refreshHoldings()
+        refreshPortfolioTotals()
+        refreshAllocations()
+        refreshRecurringInvestments()
+    }
+
+    func updateRecurringRule(id: Int64, plannedAmount: Double, currency: String, frequency: String, executionDay: Int) throws {
+        guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
+        try databaseManager.updateRecurringInvestment(
+            id: id,
+            plannedAmount: plannedAmount,
+            currency: currency,
+            frequency: frequency,
+            executionDay: executionDay
+        )
+        refreshRecurringInvestments()
+    }
+
+    func recurringPurchases(holdingID: Int64) -> [DatabaseManager.RecurringPurchaseRecord] {
+        guard let databaseManager else { return [] }
+        return (try? databaseManager.listRecurringPurchases(holdingID: holdingID)) ?? []
+    }
+
+    func addDividend(holdingID: Int64, payDate: String, amount: Double, currency: String) throws {
+        guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
+        try databaseManager.addDividend(holdingID: holdingID, payDate: payDate, amount: amount, currency: currency)
+        refreshDividends()
+        refreshHoldings()
+        refreshPortfolioTotals()
+    }
+
+    func refreshDividends() {
+        guard let databaseManager else { return }
+        dividendRecords = (try? databaseManager.listDividends()) ?? []
+    }
+
+    func updateDividend(id: Int64, payDate: String, amount: Double, currency: String) throws {
+        guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
+        try databaseManager.updateDividend(id: id, payDate: payDate, amount: amount, currency: currency)
+        refreshDividends()
+        refreshHoldings()
+        refreshPortfolioTotals()
+    }
+
+    func deleteDividend(id: Int64) {
+        guard let databaseManager else { return }
+        do {
+            try databaseManager.deleteDividend(id: id)
+            refreshDividends()
+            refreshHoldings()
+            refreshPortfolioTotals()
+        } catch {
+            NSLog("FinTrack dividend deletion failed: %@", error.localizedDescription)
+        }
+    }
+
     func symbolSuggestions(prefix: String, market: String) -> [DatabaseManager.SymbolSuggestion] {
         guard let databaseManager, !prefix.isEmpty else { return [] }
         return (try? databaseManager.symbolSuggestions(prefix: prefix, market: market)) ?? []
@@ -122,6 +221,8 @@ final class AppModel: ObservableObject {
         symbol: String,
         securityName: String,
         market: String,
+        instrumentType: String,
+        etfType: String?,
         currency: String,
         shares: Double,
         totalCost: Double
@@ -134,6 +235,8 @@ final class AppModel: ObservableObject {
             symbol: symbol,
             securityName: securityName,
             market: market,
+            instrumentType: instrumentType,
+            etfType: etfType,
             currency: currency,
             shares: shares,
             totalCost: totalCost
@@ -196,6 +299,7 @@ final class AppModel: ObservableObject {
         refreshAssets()
         refreshHoldings()
         refreshPortfolioTotals()
+        refreshAllocations()
     }
 
     func refreshPortfolioTotals() {
@@ -204,6 +308,15 @@ final class AppModel: ObservableObject {
             portfolioTotals = try databaseManager.portfolioTotals()
         } catch {
             NSLog("FinTrack portfolio totals query failed: %@", error.localizedDescription)
+        }
+    }
+
+    func refreshAllocations() {
+        guard let databaseManager else { return }
+        do {
+            allocationRecords = try databaseManager.allocationRecords()
+        } catch {
+            NSLog("FinTrack allocation query failed: %@", error.localizedDescription)
         }
     }
 
@@ -256,6 +369,7 @@ final class AppModel: ObservableObject {
         refreshHoldings()
         refreshRecurringInvestments()
         refreshPortfolioTotals()
+        refreshAllocations()
     }
 
     func refreshLiabilities() {
@@ -397,6 +511,9 @@ enum L10n {
         "Recurring Investment": "定期定額", "Foreign Currency": "外幣", "Stock": "股票",
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
         "No recurring investments": "目前沒有定期定額",
+        "No market prices": "尚無市場價格", "NTD converted": "已換算新台幣", "holdings": "筆持股", "shares": "股", "MARKET VALUE": "目前市值",
+        "No holdings yet. Click Add to create one.": "目前沒有持股，請按新增建立。",
+        "Allocation will appear after holdings and market prices are available.": "建立持股並取得市場價格後，這裡會顯示資產配置。",
         "Total Assets": "總資產", "Total Liabilities": "總負債", "Net Worth": "淨值",
         "Total Assets Details": "總資產明細", "Total Liabilities Details": "總負債明細",
         "Liquid Asset": "流動資產", "Liquid Investment": "流動性投資", "Long-term Investment": "長期投資", "Other Asset": "其他資產",
@@ -445,7 +562,7 @@ struct DashboardView: View {
             SidebarView(selectedPage: $selectedPage)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 240)
         } detail: {
-            DashboardContentView(pageTitle: selectedPage)
+            DashboardContentView(pageTitle: selectedPage, selectedPage: $selectedPage)
         }
         .frame(minWidth: 980, minHeight: 680)
         .onAppear {
@@ -474,6 +591,7 @@ struct SidebarView: View {
                 page("Overview", systemImage: "square.grid.2x2")
                 page("Income Statement", systemImage: "chart.line.uptrend.xyaxis")
                 page("Portfolio", systemImage: "chart.pie")
+                page("Dividends", systemImage: "banknote")
 
                 expandablePage("Recurring Investment", systemImage: "calendar.badge.clock", isExpanded: $recurringExpanded)
                 if recurringExpanded {
@@ -503,7 +621,7 @@ struct SidebarView: View {
                     .font(.title2.weight(.bold))
                 Spacer()
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 24)
             .padding(.vertical, 14)
         }
         .safeAreaInset(edge: .bottom) {
@@ -581,6 +699,8 @@ struct SidebarIconButton: View {
 
 struct DashboardContentView: View {
     let pageTitle: String
+    @Binding var selectedPage: String
+    @EnvironmentObject private var appModel: AppModel
     @AppStorage("showDetailChanges") private var showDetailChanges = true
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
@@ -594,6 +714,12 @@ struct DashboardContentView: View {
 
             if pageTitle == "Portfolio" {
                 PortfolioView()
+            } else if pageTitle == "Dividends" {
+                DividendManagementView()
+            } else if pageTitle == "Recurring Investment" {
+                RecurringInvestmentView(selectedPage: $selectedPage)
+            } else if let recurring = appModel.recurringRecords.first(where: { $0.securityName == pageTitle }) {
+                RecurringHoldingDetailView(rule: recurring)
             } else if pageTitle == "Income Statement" {
                 IncomeStatementView()
             } else if pageTitle == "Settings" {
@@ -746,12 +872,25 @@ private func money(_ value: Double, currency: String) -> String {
     case "NTD": prefix = "NTD "
     default: prefix = "\(currency) "
     }
-    return "\(prefix)\(String(format: "%.2f", value))"
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.minimumFractionDigits = 2
+    formatter.maximumFractionDigits = 2
+    return "\(prefix)\(formatter.string(from: NSNumber(value: value)) ?? "0.00")"
+}
+
+private func shares(_ value: Double, market: String) -> String {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    let isTaiwan = market.caseInsensitiveCompare("Taiwan") == .orderedSame
+        || market.caseInsensitiveCompare("TW") == .orderedSame
+    formatter.minimumFractionDigits = isTaiwan ? 0 : 2
+    formatter.maximumFractionDigits = isTaiwan ? 0 : 2
+    return formatter.string(from: NSNumber(value: value)) ?? (isTaiwan ? "0" : "0.00")
 }
 
 private func signedNTD(_ value: Double) -> String {
-    let prefix = value >= 0 ? "+" : "-"
-    return "\(prefix)\(ntd(abs(value)))"
+    return value < 0 ? "-\(ntd(abs(value)))" : ntd(value)
 }
 
 struct AddAssetSheet: View {
@@ -1306,6 +1445,8 @@ struct EditHoldingSheet: View {
     @State private var symbol: String
     @State private var securityName: String
     @State private var market: String
+    @State private var instrumentType: String
+    @State private var etfType: String
     @State private var currency: String
     @State private var shares: String
     @State private var totalCost: String
@@ -1317,6 +1458,8 @@ struct EditHoldingSheet: View {
         _symbol = State(initialValue: holding.symbol)
         _securityName = State(initialValue: holding.securityName)
         _market = State(initialValue: holding.market)
+        _instrumentType = State(initialValue: holding.instrumentType)
+        _etfType = State(initialValue: holding.etfType ?? "equity")
         _currency = State(initialValue: holding.currency)
         _shares = State(initialValue: String(holding.shares))
         _totalCost = State(initialValue: String(holding.totalCost))
@@ -1351,6 +1494,18 @@ struct EditHoldingSheet: View {
                 Text("United States").tag("US")
             }
             .pickerStyle(.menu)
+            Picker("Type", selection: $instrumentType) {
+                Text("Stock").tag("stock")
+                Text("ETF").tag("etf")
+            }
+            .pickerStyle(.segmented)
+            if instrumentType == "etf" {
+                Picker("ETF type", selection: $etfType) {
+                    Text("Equity ETF").tag("equity")
+                    Text("Bond ETF").tag("bond")
+                }
+                .pickerStyle(.menu)
+            }
             Picker("Currency", selection: $currency) {
                 Text("NTD").tag("NTD")
                 Text("USD").tag("USD")
@@ -1387,6 +1542,8 @@ struct EditHoldingSheet: View {
                 symbol: symbol,
                 securityName: securityName,
                 market: market,
+                instrumentType: instrumentType,
+                etfType: instrumentType == "etf" ? etfType : nil,
                 currency: currency,
                 shares: shareValue,
                 totalCost: cost
@@ -1402,9 +1559,21 @@ struct PortfolioView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var showingAddHolding = false
     @State private var editingHolding: DatabaseManager.HoldingRecord?
+    @State private var pendingDeleteHolding: PortfolioHolding?
+    @State private var dividendHolding: DatabaseManager.HoldingRecord?
+    @State private var sortAscending = true
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
-        let displayedHoldings = appModel.holdingRecords.map(makePortfolioHolding)
+        let displayedHoldings = appModel.holdingRecords
+            .sorted {
+                let lhsKey = String($0.securityName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased()
+                let rhsKey = String($1.securityName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased()
+                if lhsKey != rhsKey { return sortAscending ? lhsKey < rhsKey : lhsKey > rhsKey }
+                let comparison = $0.securityName.localizedCaseInsensitiveCompare($1.securityName)
+                return sortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+            }
+            .map(makePortfolioHolding)
         let portfolioTotals = appModel.portfolioTotals
 
         VStack(spacing: 16) {
@@ -1412,14 +1581,22 @@ struct PortfolioView: View {
                 PortfolioMetricCard(
                     title: "TOTAL P&L",
                     value: portfolioTotals.pricedHoldings > 0 ? signedNTD(portfolioTotals.totalPLNTD) : "—",
-                    detail: portfolioTotals.pricedHoldings > 0 ? "NTD converted" : "No market prices",
+                    detail: L10n.text(
+                        portfolioTotals.pricedHoldings > 0 ? "NTD converted" : "No market prices",
+                        language: appLanguage
+                    ),
                     tint: portfolioTotals.totalPLNTD >= 0 ? .green : .red
                 )
-                PortfolioMetricCard(title: "TODAY", value: "—", detail: "No market prices", tint: .primary)
                 PortfolioMetricCard(
-                    title: "INVESTED",
-                    value: portfolioTotals.investedNTD > 0 ? ntd(portfolioTotals.investedNTD) : "—",
-                    detail: "\(displayedHoldings.count) holdings",
+                    title: "TODAY",
+                    value: "—",
+                    detail: L10n.text("No market prices", language: appLanguage),
+                    tint: .primary
+                )
+                PortfolioMetricCard(
+                    title: "MARKET VALUE",
+                    value: portfolioTotals.pricedHoldings > 0 ? ntd(portfolioTotals.marketValueNTD) : "—",
+                    detail: "\(displayedHoldings.count) \(L10n.text("holdings", language: appLanguage))",
                     tint: .primary
                 )
             }
@@ -1427,12 +1604,15 @@ struct PortfolioView: View {
 
             ScrollView {
                 VStack(spacing: 16) {
-                    AllocationPlaceholderCard()
+                    AllocationCard(records: appModel.allocationRecords)
                     PositionsCard(
                         holdings: displayedHoldings,
                         onAdd: { showingAddHolding = true },
                         onEdit: { id in editingHolding = appModel.holdingRecords.first { $0.id == id } },
-                        onDelete: { id in appModel.deleteHolding(id: id) }
+                        onDelete: { id in pendingDeleteHolding = displayedHoldings.first { $0.id == id } },
+                        onAddDividend: { id in dividendHolding = appModel.holdingRecords.first { $0.id == id } },
+                        sortAscending: sortAscending,
+                        onToggleSort: { sortAscending.toggle() }
                     )
                 }
                 .padding(.horizontal, 24)
@@ -1444,6 +1624,19 @@ struct PortfolioView: View {
         }
         .sheet(item: $editingHolding) { holding in
             EditHoldingSheet(holding: holding)
+        }
+        .sheet(item: $dividendHolding) { holding in
+            AddDividendSheet(holding: holding)
+        }
+        .alert(item: $pendingDeleteHolding) { holding in
+            Alert(
+                title: Text("Delete Holding?"),
+                message: Text("This will remove \(holding.securityName) from your portfolio."),
+                primaryButton: .destructive(Text("Delete")) {
+                    appModel.deleteHolding(id: holding.id)
+                },
+                secondaryButton: .cancel()
+            )
         }
         .onAppear {
             appModel.refreshHoldings()
@@ -1468,7 +1661,7 @@ struct PortfolioView: View {
             id: holding.id,
             symbol: holding.symbol,
             securityName: holding.securityName,
-            quantity: String(format: "%.4f", holding.shares),
+            quantity: shares(holding.shares, market: holding.market),
             average: average,
             price: price,
             capitalPL: profitLoss,
@@ -1509,6 +1702,9 @@ struct PositionsCard: View {
     let onAdd: () -> Void
     let onEdit: (Int64) -> Void
     let onDelete: (Int64) -> Void
+    let onAddDividend: (Int64) -> Void
+    let sortAscending: Bool
+    let onToggleSort: () -> Void
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
@@ -1516,7 +1712,9 @@ struct PositionsCard: View {
             HStack {
                 Text(L10n.text("HOLDINGS", language: appLanguage)).font(.caption.weight(.bold)).foregroundStyle(.secondary)
                 Spacer()
-                Button(L10n.text("Add", language: appLanguage), systemImage: "plus", action: onAdd)
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                }
                     .buttonStyle(.plain)
                     .font(.callout.weight(.semibold))
             }
@@ -1525,8 +1723,15 @@ struct PositionsCard: View {
             .padding(.bottom, 10)
 
             HStack(spacing: 12) {
-                Text(L10n.text("SYMBOL", language: appLanguage))
+                Button(action: onToggleSort) {
+                    HStack(spacing: 6) {
+                        Text(L10n.text("SYMBOL", language: appLanguage))
+                        Image(systemName: sortAscending ? "arrow.down" : "arrow.up")
+                            .font(.caption2)
+                    }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
                 Text(L10n.text("LAST", language: appLanguage))
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 Text(L10n.text("VALUE", language: appLanguage))
@@ -1542,7 +1747,7 @@ struct PositionsCard: View {
             ScrollView(.vertical) {
                 LazyVStack(spacing: 0) {
                     if holdings.isEmpty {
-                        Text("No holdings yet. Click Add to create one.")
+                        Text(L10n.text("No holdings yet. Click Add to create one.", language: appLanguage))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, minHeight: 160)
                     } else {
@@ -1562,8 +1767,8 @@ struct PositionsCard: View {
         HStack(spacing: 12) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(holding.symbol).font(.headline)
-                    Text("\(holding.quantity) shares · \(holding.securityName)")
+                    Text(holding.securityName).font(.headline).lineLimit(1)
+                    Text("\(holding.quantity) \(L10n.text("shares", language: appLanguage)) · \(holding.symbol)")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
@@ -1583,28 +1788,374 @@ struct PositionsCard: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1) }
         .contextMenu {
             Button("Edit") { onEdit(holding.id) }
+            Button("Add Dividend") { onAddDividend(holding.id) }
+            Divider()
             Button("Delete", role: .destructive) { onDelete(holding.id) }
         }
     }
 }
 
-struct AllocationPlaceholderCard: View {
+struct DividendManagementView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @State private var showingAdd = false
+    @State private var editing: DatabaseManager.DividendRecord?
+    @State private var pendingDelete: DatabaseManager.DividendRecord?
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("ALLOCATION")
+        VStack(spacing: 16) {
+            HStack {
+                Spacer()
+                Button(action: { showingAdd = true }) { Image(systemName: "plus") }
+                    .buttonStyle(.plain)
+                    .font(.callout.weight(.semibold))
+            }
+            .padding(.horizontal, 32)
+
+            VStack(spacing: 0) {
+                HStack {
+                    Text("SECURITY").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("DATE").frame(width: 130, alignment: .trailing)
+                    Text("AMOUNT").frame(width: 140, alignment: .trailing)
+                }
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-            Text("Allocation will appear after holdings and market prices are available.")
+                .padding(.horizontal, 32)
+                .padding(.bottom, 10)
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        if appModel.dividendRecords.isEmpty {
+                            Text("No dividends recorded. Click + to add one.")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, minHeight: 180)
+                        } else {
+                            ForEach(appModel.dividendRecords) { dividend in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(dividend.securityName).font(.headline)
+                                        Text(dividend.symbol).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(dividend.payDate).frame(width: 130, alignment: .trailing)
+                                    Text(money(dividend.amount, currency: dividend.currency))
+                                        .frame(width: 140, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 32)
+                                .padding(.vertical, 11)
+                                .contextMenu {
+                                    Button("Edit") { editing = dividend }
+                                    Divider()
+                                    Button("Delete", role: .destructive) { pendingDelete = dividend }
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 520)
+            }
+            .background(.background, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 24)
+        .sheet(isPresented: $showingAdd) { AddDividendManagementSheet() }
+        .sheet(item: $editing) { dividend in EditDividendSheet(dividend: dividend) }
+        .alert(item: $pendingDelete) { dividend in
+            Alert(
+                title: Text("Delete Dividend?"),
+                message: Text("This dividend record will be removed."),
+                primaryButton: .destructive(Text("Delete")) { appModel.deleteDividend(id: dividend.id) },
+                secondaryButton: .cancel()
+            )
+        }
+    }
+}
+
+struct AddDividendManagementSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var holdingID: Int64?
+    @State private var payDate = Date()
+    @State private var amount = ""
+    @State private var currency = "NTD"
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add Dividend").font(.title2.weight(.bold))
+            Picker("Security", selection: $holdingID) {
+                Text("Select a holding").tag(nil as Int64?)
+                ForEach(appModel.holdingRecords) { holding in
+                    Text("\(holding.securityName) (\(holding.symbol))").tag(holding.id as Int64?)
+                }
+            }
+            .pickerStyle(.menu)
+            DatePicker("Payment date", selection: $payDate, displayedComponents: .date)
+            TextField("Amount", text: $amount).textFieldStyle(.roundedBorder)
+            Picker("Currency", selection: $currency) {
+                Text("NTD").tag("NTD")
+                Text("USD").tag("USD")
+                Text("JPY").tag("JPY")
+            }
+            .pickerStyle(.menu)
+            HStack { Spacer(); Button("Cancel") { dismiss() }; Button("Save") { save() }.buttonStyle(.borderedProminent) }
+            if let errorMessage { Text(errorMessage).font(.caption).foregroundStyle(.red) }
+        }
+        .padding(24)
+        .frame(width: 440)
+    }
+
+    private func save() {
+        guard let holdingID, let value = Double(amount), value > 0 else {
+            errorMessage = "Select a security and enter an amount greater than zero."
+            return
+        }
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withFullDate]
+        do {
+            try appModel.addDividend(holdingID: holdingID, payDate: formatter.string(from: payDate), amount: value, currency: currency)
+            dismiss()
+        } catch { errorMessage = error.localizedDescription }
+    }
+}
+
+struct EditDividendSheet: View {
+    let dividend: DatabaseManager.DividendRecord
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var payDate: Date
+    @State private var amount: String
+    @State private var currency: String
+    @State private var errorMessage: String?
+
+    init(dividend: DatabaseManager.DividendRecord) {
+        self.dividend = dividend
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withFullDate]
+        _payDate = State(initialValue: formatter.date(from: dividend.payDate) ?? Date())
+        _amount = State(initialValue: String(dividend.amount))
+        _currency = State(initialValue: dividend.currency)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Edit Dividend").font(.title2.weight(.bold))
+            Text(dividend.securityName).foregroundStyle(.secondary)
+            DatePicker("Payment date", selection: $payDate, displayedComponents: .date)
+            TextField("Amount", text: $amount).textFieldStyle(.roundedBorder)
+            Picker("Currency", selection: $currency) {
+                Text("NTD").tag("NTD"); Text("USD").tag("USD"); Text("JPY").tag("JPY")
+            }.pickerStyle(.menu)
+            HStack { Spacer(); Button("Cancel") { dismiss() }; Button("Save") { save() }.buttonStyle(.borderedProminent) }
+            if let errorMessage { Text(errorMessage).font(.caption).foregroundStyle(.red) }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+
+    private func save() {
+        guard let value = Double(amount), value > 0 else { errorMessage = "Enter an amount greater than zero."; return }
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withFullDate]
+        do {
+            try appModel.updateDividend(id: dividend.id, payDate: formatter.string(from: payDate), amount: value, currency: currency)
+            dismiss()
+        } catch { errorMessage = error.localizedDescription }
+    }
+}
+
+struct AddDividendSheet: View {
+    let holding: DatabaseManager.HoldingRecord
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var payDate = Date()
+    @State private var amount = ""
+    @State private var currency: String
+    @State private var errorMessage: String?
+
+    init(holding: DatabaseManager.HoldingRecord) {
+        self.holding = holding
+        _currency = State(initialValue: holding.currency)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add Dividend").font(.title2.weight(.bold))
+            Text(holding.securityName).foregroundStyle(.secondary)
+            DatePicker("Payment date", selection: $payDate, displayedComponents: .date)
+            TextField("Amount", text: $amount).textFieldStyle(.roundedBorder)
+            Picker("Currency", selection: $currency) {
+                Text("NTD").tag("NTD")
+                Text("USD").tag("USD")
+                Text("JPY").tag("JPY")
+            }
+            .pickerStyle(.menu)
+            Text("Dividends are recorded separately and are not included in exchange-rate cost calculations.")
+                .font(.caption)
                 .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+
+    private func save() {
+        guard let value = Double(amount), value > 0 else {
+            errorMessage = "Enter a dividend amount greater than zero."
+            return
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        do {
+            try appModel.addDividend(
+                holdingID: holding.id,
+                payDate: formatter.string(from: payDate),
+                amount: value,
+                currency: currency
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct AllocationCard: View {
+    let records: [DatabaseManager.AllocationRecord]
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @State private var hoveredIndex: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.text("ALLOCATION", language: appLanguage))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            if records.isEmpty {
+                Text(L10n.text("Allocation will appear after holdings and market prices are available.", language: appLanguage))
+                    .foregroundStyle(.secondary)
+            } else {
+                let total = records.reduce(0) { $0 + $1.valueNTD }
+                HStack(alignment: .center, spacing: 0) {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.08), lineWidth: 38)
+                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                            Circle()
+                                .trim(
+                                    from: allocationStart(for: index, total: total),
+                                    to: allocationStart(for: index, total: total) + allocationFraction(record, total: total)
+                                )
+                                .stroke(
+                                    allocationColor(index),
+                                    style: StrokeStyle(lineWidth: hoveredIndex == index ? 44 : 38, lineCap: .butt)
+                                )
+                                .rotationEffect(.degrees(-90))
+                                .scaleEffect(hoveredIndex == index ? 1.04 : 1)
+                        }
+                    }
+                    .frame(width: 120, height: 120)
+                    .overlay {
+                        GeometryReader { geometry in
+                            Color.clear
+                                .contentShape(Circle())
+                                .onContinuousHover(coordinateSpace: .local) { phase in
+                                    switch phase {
+                                    case .active(let location):
+                                        hoveredIndex = allocationIndex(
+                                            at: location,
+                                            size: geometry.size,
+                                            total: total
+                                        )
+                                    case .ended:
+                                        hoveredIndex = nil
+                                    }
+                                }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                            HStack(spacing: 8) {
+                                Circle().fill(allocationColor(index)).frame(width: 10, height: 10)
+                                Text(record.name)
+                                    .font(hoveredIndex == index ? .body.weight(.semibold) : .body)
+                                    .foregroundStyle(hoveredIndex == index ? .primary : .secondary)
+                                    .lineLimit(1)
+                            }
+                            .padding(.vertical, 2)
+                            .padding(.horizontal, 6)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    VStack(alignment: .trailing, spacing: 10) {
+                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                            Text(total > 0 ? String(format: "%.1f%%", record.valueNTD / total * 100) : "0.0%")
+                                .font(hoveredIndex == index ? .body.weight(.semibold) : .body)
+                                .foregroundStyle(hoveredIndex == index ? .primary : .secondary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .padding(.vertical, 2)
+                                .padding(.horizontal, 6)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
         .background(.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
     }
+
+    private func allocationFraction(_ record: DatabaseManager.AllocationRecord, total: Double) -> CGFloat {
+        total > 0 ? CGFloat(record.valueNTD / total) : 0
+    }
+
+    private func allocationStart(for index: Int, total: Double) -> CGFloat {
+        guard total > 0 else { return 0 }
+        return CGFloat(records.prefix(index).reduce(0) { $0 + $1.valueNTD } / total)
+    }
+
+    private func allocationIndex(at location: CGPoint, size: CGSize, total: Double) -> Int? {
+        guard total > 0 else { return nil }
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let dx = location.x - center.x
+        let dy = location.y - center.y
+        let radius = min(size.width, size.height) / 2
+        let distance = sqrt(dx * dx + dy * dy)
+        let innerRadius = radius - 22
+        guard distance <= radius && distance >= innerRadius else { return nil }
+
+        var angle = atan2(Double(dy), Double(dx)) + Double.pi / 2
+        if angle < 0 { angle += Double.pi * 2 }
+        let position = CGFloat(angle / (Double.pi * 2))
+
+        for index in records.indices {
+            let start = allocationStart(for: index, total: total)
+            let end = start + allocationFraction(records[index], total: total)
+            if position >= start && position < end { return index }
+        }
+        return nil
+    }
+
+    private func allocationColor(_ index: Int) -> Color {
+        [
+            Color(red: 0.05, green: 0.34, blue: 0.34),
+            Color(red: 0.06, green: 0.24, blue: 0.42),
+            Color(red: 0.30, green: 0.12, blue: 0.38),
+            Color(red: 0.48, green: 0.24, blue: 0.08),
+            Color(red: 0.45, green: 0.08, blue: 0.18)
+        ][index % 5]
+    }
 }
 
-struct AllocationCard: View {
+struct LegacyAllocationCard: View {
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     private let segments = [
         AllocationSegment(name: "富邦公司治理", weight: "34.6%", value: 0.346, color: Color(red: 0.18, green: 0.60, blue: 0.53)),
@@ -2034,6 +2585,386 @@ struct SettingsCard: View {
         .padding(20)
         .background(.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+    }
+}
+
+struct RecurringInvestmentView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @Binding var selectedPage: String
+    @State private var showingAddRule = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Recurring Rules")
+                    .font(.title2.weight(.semibold))
+                Spacer()
+                Button(action: { showingAddRule = true }) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain)
+                .font(.title3.weight(.semibold))
+            }
+
+            if appModel.recurringRecords.isEmpty {
+                ContentUnavailableView(
+                    "No recurring rules",
+                    systemImage: "calendar.badge.clock",
+                    description: Text("Add a rule to plan your recurring investments.")
+                )
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(appModel.recurringRecords) { rule in
+                            Button {
+                                selectedPage = rule.securityName
+                            } label: {
+                                recurringRuleRow(rule)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .background(.background, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 24)
+        .sheet(isPresented: $showingAddRule) {
+            AddRecurringRuleSheet()
+        }
+    }
+
+    private func recurringRuleRow(_ rule: DatabaseManager.RecurringRecord) -> some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(rule.securityName).font(.headline)
+                Text("\(rule.symbol) · " + rule.schedules.map { "\($0.frequency) day \($0.executionDay)" }.joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(money(rule.plannedAmount, currency: rule.currency)).font(.headline)
+                Text("Click to view purchases").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+    }
+}
+
+struct RecurringHoldingDetailView: View {
+    let rule: DatabaseManager.RecurringRecord
+    @EnvironmentObject private var appModel: AppModel
+    @State private var showingAddPurchase = false
+    @State private var editingSchedule: DatabaseManager.RecurringSchedule?
+    @State private var purchases: [DatabaseManager.RecurringPurchaseRecord] = []
+
+    var body: some View {
+        let totalAmount = purchases.reduce(0) { $0 + $1.amount }
+        let totalShares = purchases.reduce(0) { $0 + $1.shares }
+        let lastPurchaseDate = purchases.first?.tradeDate ?? "—"
+
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 16) {
+                PortfolioMetricCard(
+                    title: "TOTAL CONTRIBUTED",
+                    value: purchases.isEmpty ? "—" : money(totalAmount, currency: rule.currency),
+                    detail: "\(purchases.count) purchases",
+                    tint: .primary
+                )
+                PortfolioMetricCard(
+                    title: "TOTAL SHARES",
+                    value: purchases.isEmpty ? "—" : String(format: "%.2f", totalShares),
+                    detail: rule.symbol,
+                    tint: .primary
+                )
+                PortfolioMetricCard(
+                    title: "LAST PURCHASE",
+                    value: lastPurchaseDate,
+                    detail: rule.frequency,
+                    tint: .primary
+                )
+            }
+
+            Rectangle()
+                .fill(Color.secondary.opacity(0.28))
+                .frame(height: 1)
+                .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("SCHEDULES").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                ForEach(rule.schedules) { schedule in
+                    HStack {
+                        Text("\(money(schedule.plannedAmount, currency: schedule.currency)) · \(schedule.frequency) · day \(schedule.executionDay)")
+                        Spacer()
+                        Button {
+                            editingSchedule = schedule
+                        } label: {
+                            Image(systemName: "pencil")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(14)
+            .background(.background, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+
+            VStack(spacing: 0) {
+                HStack {
+                    Text("PURCHASES").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(action: { showingAddPurchase = true }) {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.plain)
+                    .font(.callout.weight(.semibold))
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+
+                HStack {
+                    Text("DATE").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("SHARES").frame(width: 120, alignment: .trailing)
+                    Text("AMOUNT").frame(width: 140, alignment: .trailing)
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 10)
+
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        if purchases.isEmpty {
+                            Text("No purchases recorded. Click + to add the actual transaction.")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, minHeight: 160)
+                        } else {
+                            ForEach(purchases) { purchase in
+                                HStack {
+                                    Text(purchase.tradeDate).frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(String(format: "%.2f", purchase.shares)).frame(width: 120, alignment: .trailing)
+                                    Text(money(purchase.amount, currency: purchase.currency))
+                                        .frame(width: 140, alignment: .trailing)
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 11)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 420)
+            }
+            .background(.background, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 24)
+        .onAppear { purchases = appModel.recurringPurchases(holdingID: rule.holdingID) }
+        .sheet(isPresented: $showingAddPurchase) {
+            AddRecurringPurchaseSheet(rule: rule) {
+                purchases = appModel.recurringPurchases(holdingID: rule.holdingID)
+            }
+        }
+        .sheet(item: $editingSchedule) { schedule in
+            EditRecurringRuleSheet(schedule: schedule)
+        }
+    }
+}
+
+struct EditRecurringRuleSheet: View {
+    let schedule: DatabaseManager.RecurringSchedule
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var plannedAmount: String
+    @State private var currency: String
+    @State private var frequency: String
+    @State private var executionDay: Int
+    @State private var errorMessage: String?
+
+    init(schedule: DatabaseManager.RecurringSchedule) {
+        self.schedule = schedule
+        _plannedAmount = State(initialValue: String(schedule.plannedAmount))
+        _currency = State(initialValue: schedule.currency)
+        _frequency = State(initialValue: schedule.frequency)
+        _executionDay = State(initialValue: schedule.executionDay)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Edit Recurring Rule").font(.title2.weight(.bold))
+            TextField("Planned amount", text: $plannedAmount).textFieldStyle(.roundedBorder)
+            Picker("Currency", selection: $currency) {
+                Text("NTD").tag("NTD")
+                Text("USD").tag("USD")
+                Text("JPY").tag("JPY")
+            }
+            .pickerStyle(.menu)
+            Picker("Frequency", selection: $frequency) {
+                Text("Monthly").tag("monthly")
+                Text("Weekly").tag("weekly")
+            }
+            .pickerStyle(.menu)
+            Stepper("Execution day: \(executionDay)", value: $executionDay, in: 1...31)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+
+    private func save() {
+        guard let amount = Double(plannedAmount), amount > 0 else {
+            errorMessage = "Enter an amount greater than zero."
+            return
+        }
+        do {
+            try appModel.updateRecurringRule(
+                id: schedule.id,
+                plannedAmount: amount,
+                currency: currency,
+                frequency: frequency,
+                executionDay: executionDay
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct AddRecurringPurchaseSheet: View {
+    let rule: DatabaseManager.RecurringRecord
+    let onSaved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var tradeDate = Date()
+    @State private var shares = ""
+    @State private var amount = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Record Purchase").font(.title2.weight(.bold))
+            Text(rule.securityName).foregroundStyle(.secondary)
+            DatePicker("Purchase date", selection: $tradeDate, displayedComponents: .date)
+            TextField("Shares", text: $shares).textFieldStyle(.roundedBorder)
+            TextField("Amount (\(rule.currency))", text: $amount).textFieldStyle(.roundedBorder)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+
+    private func save() {
+        guard let shareValue = Double(shares), shareValue > 0,
+              let amountValue = Double(amount), amountValue > 0 else {
+            errorMessage = "Enter shares and amount greater than zero."
+            return
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        do {
+            try appModel.addRecurringPurchase(
+                holdingID: rule.holdingID,
+                tradeDate: formatter.string(from: tradeDate),
+                shares: shareValue,
+                amount: amountValue,
+                currency: rule.currency
+            )
+            onSaved()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct AddRecurringRuleSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var selectedHoldingID: Int64?
+    @State private var plannedAmount = ""
+    @State private var currency = "NTD"
+    @State private var frequency = "monthly"
+    @State private var executionDay = 1
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add Recurring Rule").font(.title2.weight(.bold))
+
+            Picker("Holding", selection: $selectedHoldingID) {
+                Text("Select a holding").tag(nil as Int64?)
+                ForEach(appModel.holdingRecords) { holding in
+                    Text("\(holding.securityName) (\(holding.symbol))").tag(holding.id as Int64?)
+                }
+            }
+            .pickerStyle(.menu)
+
+            TextField("Planned amount", text: $plannedAmount)
+                .textFieldStyle(.roundedBorder)
+            Picker("Currency", selection: $currency) {
+                Text("NTD").tag("NTD")
+                Text("USD").tag("USD")
+                Text("JPY").tag("JPY")
+            }
+            .pickerStyle(.menu)
+            Picker("Frequency", selection: $frequency) {
+                Text("Monthly").tag("monthly")
+                Text("Weekly").tag("weekly")
+            }
+            .pickerStyle(.menu)
+            Stepper("Execution day: \(executionDay)", value: $executionDay, in: 1...31)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 440)
+    }
+
+    private func save() {
+        guard let selectedHoldingID,
+              let amount = Double(plannedAmount), amount > 0 else {
+            errorMessage = "Select a holding and enter an amount greater than zero."
+            return
+        }
+        do {
+            try appModel.createRecurringRule(
+                holdingID: selectedHoldingID,
+                plannedAmount: amount,
+                currency: currency,
+                frequency: frequency,
+                executionDay: executionDay,
+                startDate: ISO8601DateFormatter().string(from: Date())
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
