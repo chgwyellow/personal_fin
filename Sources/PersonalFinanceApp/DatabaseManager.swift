@@ -22,6 +22,33 @@ final class DatabaseManager {
         }
     }
 
+    struct AssetRecord: Identifiable {
+        let id: Int64
+        let name: String
+        let assetGroup: String
+        let category: String
+        let currency: String
+        let value: Double
+        let ntdValue: Double
+    }
+
+    struct LiabilityRecord: Identifiable {
+        let id: Int64
+        let name: String
+        let liabilityGroup: String
+        let category: String
+        let currency: String
+        let balance: Double
+        let interestRate: Double?
+    }
+
+    struct Snapshot {
+        let date: String
+        let totalAssets: Double
+        let totalLiabilities: Double
+        let netWorth: Double
+    }
+
     enum DatabaseError: LocalizedError {
         case openFailed(String)
         case queryFailed(String)
@@ -216,9 +243,199 @@ final class DatabaseManager {
         )
     }
 
+    /// Returns all active asset records for display in the Overview.
+    func listAssets() throws -> [AssetRecord] {
+        let sql = """
+        SELECT id, name, asset_group, category, currency, value, ntd_value
+        FROM assets
+        WHERE is_active = 1
+        ORDER BY name COLLATE NOCASE DESC;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+
+        var records: [AssetRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            records.append(AssetRecord(
+                id: sqlite3_column_int64(statement, 0),
+                name: String(cString: sqlite3_column_text(statement, 1)),
+                assetGroup: String(cString: sqlite3_column_text(statement, 2)),
+                category: String(cString: sqlite3_column_text(statement, 3)),
+                currency: String(cString: sqlite3_column_text(statement, 4)),
+                value: sqlite3_column_double(statement, 5),
+                ntdValue: sqlite3_column_double(statement, 6)
+            ))
+        }
+        return records
+    }
+
+    /// Returns all liability records for display in the Overview.
+    func listLiabilities() throws -> [LiabilityRecord] {
+        let sql = """
+        SELECT id, name, liability_group, category, currency, balance, interest_rate
+        FROM liabilities
+        ORDER BY name COLLATE NOCASE DESC;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+
+        var records: [LiabilityRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            records.append(LiabilityRecord(
+                id: sqlite3_column_int64(statement, 0),
+                name: String(cString: sqlite3_column_text(statement, 1)),
+                liabilityGroup: String(cString: sqlite3_column_text(statement, 2)),
+                category: String(cString: sqlite3_column_text(statement, 3)),
+                currency: String(cString: sqlite3_column_text(statement, 4)),
+                balance: sqlite3_column_double(statement, 5),
+                interestRate: sqlite3_column_type(statement, 6) == SQLITE_NULL
+                    ? nil
+                    : sqlite3_column_double(statement, 6)
+            ))
+        }
+        return records
+    }
+
+    /// Deactivates an asset while preserving its historical database row.
+    func deactivateAsset(id: Int64) throws {
+        try execute("UPDATE assets SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = \(id);")
+    }
+
+    /// Deactivates a liability while preserving its historical database row.
+    func deactivateLiability(id: Int64) throws {
+        try execute("UPDATE liabilities SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = \(id);")
+    }
+
+    /// Updates an existing asset while preserving its database history.
+    func updateAsset(
+        id: Int64,
+        name: String,
+        assetGroup: String,
+        category: String,
+        currency: String,
+        value: Double,
+        ntdValue: Double
+    ) throws {
+        let sql = """
+        UPDATE assets
+        SET name = ?, asset_group = ?, category = ?, currency = ?, value = ?,
+            ntd_value = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND is_active = 1;
+        """
+        try executePrepared(sql) { statement in
+            let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, name, -1, transientDestructor)
+            sqlite3_bind_text(statement, 2, assetGroup, -1, transientDestructor)
+            sqlite3_bind_text(statement, 3, category, -1, transientDestructor)
+            sqlite3_bind_text(statement, 4, currency, -1, transientDestructor)
+            sqlite3_bind_double(statement, 5, value)
+            sqlite3_bind_double(statement, 6, ntdValue)
+            sqlite3_bind_int64(statement, 7, id)
+        }
+    }
+
+    /// Updates an existing liability while preserving its database history.
+    func updateLiability(
+        id: Int64,
+        name: String,
+        liabilityGroup: String,
+        category: String,
+        currency: String,
+        balance: Double,
+        interestRate: Double?
+    ) throws {
+        let sql = """
+        UPDATE liabilities
+        SET name = ?, liability_group = ?, category = ?, currency = ?, balance = ?,
+            interest_rate = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?;
+        """
+        try executePrepared(sql) { statement in
+            let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, name, -1, transientDestructor)
+            sqlite3_bind_text(statement, 2, liabilityGroup, -1, transientDestructor)
+            sqlite3_bind_text(statement, 3, category, -1, transientDestructor)
+            sqlite3_bind_text(statement, 4, currency, -1, transientDestructor)
+            sqlite3_bind_double(statement, 5, balance)
+            if let interestRate {
+                sqlite3_bind_double(statement, 6, interestRate)
+            } else {
+                sqlite3_bind_null(statement, 6)
+            }
+            sqlite3_bind_int64(statement, 7, id)
+        }
+    }
+
+    /// Stores one daily financial snapshot for historical comparisons.
+    func saveSnapshot(date: String, assets: AssetTotals, liabilities: LiabilityTotals) throws {
+        let sql = """
+        INSERT INTO snapshots
+            (snapshot_date, total_assets_ntd, total_liabilities_ntd, net_worth_ntd,
+             portfolio_value_ntd)
+        VALUES (?, ?, ?, ?, 0)
+        ON CONFLICT(snapshot_date) DO UPDATE SET
+            total_assets_ntd = excluded.total_assets_ntd,
+            total_liabilities_ntd = excluded.total_liabilities_ntd,
+            net_worth_ntd = excluded.net_worth_ntd;
+        """
+        try executePrepared(sql) { statement in
+            let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, date, -1, transientDestructor)
+            sqlite3_bind_double(statement, 2, assets.total)
+            sqlite3_bind_double(statement, 3, liabilities.total)
+            sqlite3_bind_double(statement, 4, assets.total - liabilities.total)
+        }
+    }
+
+    /// Returns the most recent snapshot before the supplied date.
+    func previousSnapshot(before date: String) throws -> Snapshot? {
+        let sql = """
+        SELECT snapshot_date, total_assets_ntd, total_liabilities_ntd, net_worth_ntd
+        FROM snapshots
+        WHERE snapshot_date < ?
+        ORDER BY snapshot_date DESC
+        LIMIT 1;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, date, -1, transientDestructor)
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return Snapshot(
+            date: String(cString: sqlite3_column_text(statement, 0)),
+            totalAssets: sqlite3_column_double(statement, 1),
+            totalLiabilities: sqlite3_column_double(statement, 2),
+            netWorth: sqlite3_column_double(statement, 3)
+        )
+    }
+
     private var databaseMessage: String {
         guard let database else { return "Unknown SQLite error" }
         return String(cString: sqlite3_errmsg(database))
+    }
+
+    private func executePrepared(
+        _ sql: String,
+        bind: (OpaquePointer?) -> Void
+    ) throws {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        bind(statement)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
     }
 
     private let schemaSQL = """
@@ -250,6 +467,17 @@ final class DatabaseManager {
         notes TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS snapshots (
+        id INTEGER PRIMARY KEY,
+        snapshot_date TEXT NOT NULL UNIQUE,
+        total_assets_ntd NUMERIC NOT NULL,
+        total_liabilities_ntd NUMERIC NOT NULL,
+        net_worth_ntd NUMERIC NOT NULL,
+        portfolio_value_ntd NUMERIC NOT NULL DEFAULT 0,
+        asset_allocation_json TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     """
 

@@ -28,6 +28,8 @@ final class AppModel: ObservableObject {
         shortTerm: 0,
         longTerm: 0
     )
+    @Published private(set) var assets: [DatabaseManager.AssetRecord] = []
+    @Published private(set) var liabilities: [DatabaseManager.LiabilityRecord] = []
     private let databaseManager: DatabaseManager?
 
     init() {
@@ -40,6 +42,7 @@ final class AppModel: ObservableObject {
         guard let databaseManager else { return }
         do {
             assetTotals = try databaseManager.assetTotals()
+            assets = try databaseManager.listAssets()
         } catch {
             NSLog("FinTrack asset query failed: %@", error.localizedDescription)
         }
@@ -71,6 +74,7 @@ final class AppModel: ObservableObject {
         guard let databaseManager else { return }
         do {
             liabilityTotals = try databaseManager.liabilityTotals()
+            liabilities = try databaseManager.listLiabilities()
         } catch {
             NSLog("FinTrack liability query failed: %@", error.localizedDescription)
         }
@@ -88,6 +92,74 @@ final class AppModel: ObservableObject {
             throw DatabaseManager.DatabaseError.openFailed("Database is unavailable")
         }
         _ = try databaseManager.createLiability(
+            name: name,
+            liabilityGroup: liabilityGroup,
+            category: category,
+            currency: currency,
+            balance: balance,
+            interestRate: interestRate
+        )
+        refreshLiabilities()
+    }
+
+    func deleteAsset(id: Int64) {
+        guard let databaseManager else { return }
+        do {
+            try databaseManager.deactivateAsset(id: id)
+            refreshAssets()
+        } catch {
+            NSLog("FinTrack asset deletion failed: %@", error.localizedDescription)
+        }
+    }
+
+    func deleteLiability(id: Int64) {
+        guard let databaseManager else { return }
+        do {
+            try databaseManager.deactivateLiability(id: id)
+            refreshLiabilities()
+        } catch {
+            NSLog("FinTrack liability deletion failed: %@", error.localizedDescription)
+        }
+    }
+
+    func updateAsset(
+        id: Int64,
+        name: String,
+        assetGroup: String,
+        category: String,
+        currency: String,
+        value: Double,
+        ntdValue: Double
+    ) throws {
+        guard let databaseManager else {
+            throw DatabaseManager.DatabaseError.openFailed("Database is unavailable")
+        }
+        try databaseManager.updateAsset(
+            id: id,
+            name: name,
+            assetGroup: assetGroup,
+            category: category,
+            currency: currency,
+            value: value,
+            ntdValue: ntdValue
+        )
+        refreshAssets()
+    }
+
+    func updateLiability(
+        id: Int64,
+        name: String,
+        liabilityGroup: String,
+        category: String,
+        currency: String,
+        balance: Double,
+        interestRate: Double?
+    ) throws {
+        guard let databaseManager else {
+            throw DatabaseManager.DatabaseError.openFailed("Database is unavailable")
+        }
+        try databaseManager.updateLiability(
+            id: id,
             name: name,
             liabilityGroup: liabilityGroup,
             category: category,
@@ -345,6 +417,8 @@ struct OverviewView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var showingAddAsset = false
     @State private var showingAddLiability = false
+    @State private var editingAsset: DatabaseManager.AssetRecord?
+    @State private var editingLiability: DatabaseManager.LiabilityRecord?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -359,22 +433,17 @@ struct OverviewView: View {
                 VStack(spacing: 16) {
                     HStack(alignment: .top, spacing: 16) {
                         DetailCard(title: "Total Assets Details", showChanges: showChanges, onAdd: {
-                            showingAddAsset = true
-                        }, sections: [
-                            DetailSection(title: "Liquid Assets", value: ntd(appModel.assetTotals.liquidAsset), change: "0.0%"),
-                            DetailSection(title: "Liquid Investments", value: ntd(appModel.assetTotals.liquidInvestment), change: "0.0%"),
-                            DetailSection(title: "Other Assets", value: ntd(appModel.assetTotals.otherAsset), change: "0.0%")
-                        ])
+                    showingAddAsset = true
+                        }, sections: assetSections)
 
                         VStack(spacing: 16) {
                             DetailCard(title: "Total Liabilities Details", showChanges: showChanges, onAdd: {
                                 showingAddLiability = true
-                            }, sections: [
-                                DetailSection(title: "Short-term Liabilities", value: ntd(appModel.liabilityTotals.shortTerm), change: "0.0%"),
-                                DetailSection(title: "Long-term Liabilities", value: ntd(appModel.liabilityTotals.longTerm), change: "0.0%"),
-                                DetailSection(title: "Total Liabilities", value: ntd(appModel.liabilityTotals.total), change: "0.0%")
-                            ])
-                            FinancialIndicatorsCard()
+                            }, sections: liabilitySections)
+                            FinancialIndicatorsCard(
+                                assetTotals: appModel.assetTotals,
+                                liabilityTotals: appModel.liabilityTotals
+                            )
                         }
                     }
 
@@ -390,15 +459,71 @@ struct OverviewView: View {
         .sheet(isPresented: $showingAddLiability) {
             AddLiabilitySheet()
         }
+        .sheet(item: $editingAsset) { asset in
+            EditAssetSheet(asset: asset)
+        }
+        .sheet(item: $editingLiability) { liability in
+            EditLiabilitySheet(liability: liability)
+        }
         .onAppear {
             appModel.refreshAssets()
             appModel.refreshLiabilities()
         }
     }
+
+    private var assetSections: [DetailSection] {
+        [
+            DetailSection(title: "Liquid Assets", value: ntd(appModel.assetTotals.liquidAsset), change: "0.0%", children: children(for: "liquid_asset")),
+            DetailSection(title: "Liquid Investments", value: ntd(appModel.assetTotals.liquidInvestment), change: "0.0%", children: children(for: "liquid_investment")),
+            DetailSection(title: "Other Assets", value: ntd(appModel.assetTotals.otherAsset), change: "0.0%", children: children(for: "other_asset"))
+        ]
+    }
+
+    private var liabilitySections: [DetailSection] {
+        [
+            DetailSection(title: "Short-term Liabilities", value: ntd(appModel.liabilityTotals.shortTerm), change: "0.0%", children: liabilityChildren(for: "short_term")),
+            DetailSection(title: "Long-term Liabilities", value: ntd(appModel.liabilityTotals.longTerm), change: "0.0%", children: liabilityChildren(for: "long_term")),
+            DetailSection(title: "Total Liabilities", value: ntd(appModel.liabilityTotals.total), change: "0.0%")
+        ]
+    }
+
+    private func children(for group: String) -> [DetailRow] {
+        appModel.assets
+            .filter { $0.assetGroup == group }
+            .map { asset in
+                DetailRow(
+                    name: asset.name,
+                    value: ntd(asset.ntdValue),
+                    change: "0.0%",
+                    onDelete: { appModel.deleteAsset(id: asset.id) },
+                    onEdit: { editingAsset = asset }
+                )
+            }
+    }
+
+    private func liabilityChildren(for group: String) -> [DetailRow] {
+        appModel.liabilities
+            .filter { $0.liabilityGroup == group }
+            .map { liability in
+                DetailRow(
+                    name: liability.name,
+                    value: liability.currency == "NTD"
+                        ? ntd(liability.balance)
+                        : "\(liability.currency) \(liability.balance)",
+                    change: "0.0%",
+                    onDelete: { appModel.deleteLiability(id: liability.id) },
+                    onEdit: { editingLiability = liability }
+                )
+            }
+    }
 }
 
 private func ntd(_ value: Double) -> String {
-    String(format: "NTD %,.0f", value)
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.maximumFractionDigits = 0
+    formatter.minimumFractionDigits = 0
+    return "NTD \(formatter.string(from: NSNumber(value: value)) ?? "0")"
 }
 
 struct AddAssetSheet: View {
@@ -602,6 +727,171 @@ struct AddLiabilitySheet: View {
                 currency: currency,
                 balance: balanceValue,
                 interestRate: parsedInterestRate
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct EditAssetSheet: View {
+    let asset: DatabaseManager.AssetRecord
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var name: String
+    @State private var category: String
+    @State private var currency: String
+    @State private var amount: String
+    @State private var ntdCost: String
+    @State private var errorMessage: String?
+
+    private let categories = ["Liquid Asset", "Liquid Investment", "Other Asset"]
+    private let currencies = ["NTD", "USD", "JPY"]
+
+    init(asset: DatabaseManager.AssetRecord) {
+        self.asset = asset
+        _name = State(initialValue: asset.name)
+        _category = State(initialValue: asset.category)
+        _currency = State(initialValue: asset.currency)
+        _amount = State(initialValue: String(asset.value))
+        _ntdCost = State(initialValue: String(asset.ntdValue))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Edit Asset").font(.title2.weight(.bold))
+            TextField("Asset name", text: $name).textFieldStyle(.roundedBorder)
+            Picker("Category", selection: $category) {
+                ForEach(categories, id: \.self) { Text($0).tag($0) }
+            }
+            .pickerStyle(.menu)
+            Picker("Currency", selection: $currency) {
+                ForEach(currencies, id: \.self) { Text($0).tag($0) }
+            }
+            .pickerStyle(.menu)
+            TextField("Amount", text: $amount).textFieldStyle(.roundedBorder)
+            if currency != "NTD" {
+                TextField("Initial NTD cost", text: $ntdCost).textFieldStyle(.roundedBorder)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+
+    private func save() {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let value = Double(amount), value >= 0 else {
+            errorMessage = "Enter a valid name and amount."
+            return
+        }
+        let ntdValue: Double
+        if currency == "NTD" {
+            ntdValue = value
+        } else if let cost = Double(ntdCost), cost >= 0 {
+            ntdValue = cost
+        } else {
+            errorMessage = "Enter a valid initial NTD cost."
+            return
+        }
+        do {
+            try appModel.updateAsset(
+                id: asset.id,
+                name: name,
+                assetGroup: category.replacingOccurrences(of: " ", with: "_").lowercased(),
+                category: category,
+                currency: currency,
+                value: value,
+                ntdValue: ntdValue
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct EditLiabilitySheet: View {
+    let liability: DatabaseManager.LiabilityRecord
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var name: String
+    @State private var group: String
+    @State private var category: String
+    @State private var currency: String
+    @State private var balance: String
+    @State private var interestRate: String
+    @State private var errorMessage: String?
+
+    private let groups = ["Short-term Liability", "Long-term Liability"]
+    private let currencies = ["NTD", "USD", "JPY"]
+
+    init(liability: DatabaseManager.LiabilityRecord) {
+        self.liability = liability
+        _name = State(initialValue: liability.name)
+        _group = State(initialValue: liability.liabilityGroup == "short_term" ? "Short-term Liability" : "Long-term Liability")
+        _category = State(initialValue: liability.category)
+        _currency = State(initialValue: liability.currency)
+        _balance = State(initialValue: String(liability.balance))
+        _interestRate = State(initialValue: liability.interestRate.map { String($0) } ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Edit Liability").font(.title2.weight(.bold))
+            TextField("Liability name", text: $name).textFieldStyle(.roundedBorder)
+            Picker("Group", selection: $group) {
+                ForEach(groups, id: \.self) { Text($0).tag($0) }
+            }
+            .pickerStyle(.menu)
+            TextField("Category", text: $category).textFieldStyle(.roundedBorder)
+            Picker("Currency", selection: $currency) {
+                ForEach(currencies, id: \.self) { Text($0).tag($0) }
+            }
+            .pickerStyle(.menu)
+            TextField("Balance", text: $balance).textFieldStyle(.roundedBorder)
+            TextField("Interest rate (optional)", text: $interestRate).textFieldStyle(.roundedBorder)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+
+    private func save() {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let balanceValue = Double(balance), balanceValue >= 0 else {
+            errorMessage = "Enter a valid name and balance."
+            return
+        }
+        let parsedInterest = interestRate.isEmpty ? nil : Double(interestRate)
+        guard interestRate.isEmpty || parsedInterest != nil else {
+            errorMessage = "Enter a valid interest rate."
+            return
+        }
+        do {
+            try appModel.updateLiability(
+                id: liability.id,
+                name: name,
+                liabilityGroup: group == "Short-term Liability" ? "short_term" : "long_term",
+                category: category,
+                currency: currency,
+                balance: balanceValue,
+                interestRate: parsedInterest
             )
             dismiss()
         } catch {
@@ -963,14 +1253,26 @@ struct PortfolioHolding: Identifiable {
 }
 
 struct FinancialIndicatorsCard: View {
+    let assetTotals: DatabaseManager.AssetTotals
+    let liabilityTotals: DatabaseManager.LiabilityTotals
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
-    private let indicators = [
-        ("Free Cash Flow", "NTD 0"),
-        ("Liability Ratio", "0.00%"),
-        ("Cash Ratio", "0.00%"),
-        ("Equity Multiplier", "0.00"),
-        ("Net Worth Growth Rate", "0.00%")
-    ]
+
+    private var indicators: [(String, String)] {
+        let totalAssets = assetTotals.total
+        let totalLiabilities = liabilityTotals.total
+        let netWorth = totalAssets - totalLiabilities
+        let liabilityRatio = totalAssets > 0 ? totalLiabilities / totalAssets * 100 : 0
+        let cashRatio = totalLiabilities > 0 ? assetTotals.liquidAsset / totalLiabilities * 100 : 0
+        let equityMultiplier = netWorth > 0 ? totalAssets / netWorth : 0
+
+        return [
+            ("Free Cash Flow", ntd(netWorth - assetTotals.otherAsset)),
+            ("Liability Ratio", String(format: "%.2f%%", liabilityRatio)),
+            ("Cash Ratio", String(format: "%.2f%%", cashRatio)),
+            ("Equity Multiplier", String(format: "%.2f", equityMultiplier)),
+            ("Net Worth Growth Rate", "0.00%")
+        ]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1216,6 +1518,14 @@ struct DetailCard: View {
                         .padding(.leading, 18)
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .contextMenu {
+                            if let onEdit = child.onEdit {
+                                Button("Edit", action: onEdit)
+                            }
+                            if let onDelete = child.onDelete {
+                                Button("Delete", role: .destructive, action: onDelete)
+                            }
+                        }
                 }
             }
         }
@@ -1252,4 +1562,20 @@ struct DetailRow {
     let name: String
     let value: String
     let change: String
+    let onDelete: (() -> Void)?
+    let onEdit: (() -> Void)?
+
+    init(
+        name: String,
+        value: String,
+        change: String,
+        onDelete: (() -> Void)? = nil,
+        onEdit: (() -> Void)? = nil
+    ) {
+        self.name = name
+        self.value = value
+        self.change = change
+        self.onDelete = onDelete
+        self.onEdit = onEdit
+    }
 }
