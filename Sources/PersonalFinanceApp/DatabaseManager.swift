@@ -23,6 +23,12 @@ final class DatabaseManager {
         }
     }
 
+    struct PortfolioTotals {
+        let investedNTD: Double
+        let totalPLNTD: Double
+        let pricedHoldings: Int
+    }
+
     struct AssetRecord: Identifiable {
         let id: Int64
         let name: String
@@ -549,6 +555,43 @@ final class DatabaseManager {
             totals["\(group)|\(child)"] = sqlite3_column_double(statement, 2)
         }
         return totals
+    }
+
+    /// Returns portfolio totals converted to NTD using stored prices and rates.
+    func portfolioTotals() throws -> PortfolioTotals {
+        let sql = """
+        SELECT
+            COALESCE(SUM(h.total_cost * CASE WHEN h.currency = 'NTD' THEN 1 ELSE COALESCE((
+                SELECT er.rate FROM exchange_rates er
+                WHERE er.base_currency = h.currency AND er.quote_currency = 'NTD'
+                ORDER BY er.observed_at DESC, er.id DESC LIMIT 1), 0) END), 0),
+            COALESCE(SUM(CASE WHEN mp.price IS NOT NULL THEN
+                (mp.price * h.shares - h.total_cost) * CASE WHEN h.currency = 'NTD' THEN 1 ELSE COALESCE((
+                    SELECT er.rate FROM exchange_rates er
+                    WHERE er.base_currency = h.currency AND er.quote_currency = 'NTD'
+                    ORDER BY er.observed_at DESC, er.id DESC LIMIT 1), 0) END
+                ELSE 0 END), 0),
+            COUNT(mp.price)
+        FROM holdings h
+        LEFT JOIN market_prices mp ON mp.id = (
+            SELECT mp2.id FROM market_prices mp2
+            WHERE mp2.symbol = h.symbol AND mp2.market = h.market
+            ORDER BY mp2.observed_at DESC, mp2.id DESC LIMIT 1
+        );
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            return PortfolioTotals(investedNTD: 0, totalPLNTD: 0, pricedHoldings: 0)
+        }
+        return PortfolioTotals(
+            investedNTD: sqlite3_column_double(statement, 0),
+            totalPLNTD: sqlite3_column_double(statement, 1),
+            pricedHoldings: Int(sqlite3_column_int(statement, 2))
+        )
     }
 
     /// Inserts one liability and returns the generated database ID.

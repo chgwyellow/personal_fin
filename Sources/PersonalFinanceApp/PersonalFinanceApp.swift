@@ -31,6 +31,11 @@ final class AppModel: ObservableObject {
     )
     @Published private(set) var assets: [DatabaseManager.AssetRecord] = []
     @Published private(set) var assetCategoryTotals: [String: Double] = [:]
+    @Published private(set) var portfolioTotals = DatabaseManager.PortfolioTotals(
+        investedNTD: 0,
+        totalPLNTD: 0,
+        pricedHoldings: 0
+    )
     @Published private(set) var liabilities: [DatabaseManager.LiabilityRecord] = []
     @Published private(set) var holdingRecords: [DatabaseManager.HoldingRecord] = []
     @Published private(set) var recurringRecords: [DatabaseManager.RecurringRecord] = []
@@ -43,6 +48,7 @@ final class AppModel: ObservableObject {
         refreshLiabilities()
         refreshHoldings()
         refreshRecurringInvestments()
+        refreshPortfolioTotals()
     }
 
     func refreshAssets() {
@@ -189,6 +195,16 @@ final class AppModel: ObservableObject {
 
         refreshAssets()
         refreshHoldings()
+        refreshPortfolioTotals()
+    }
+
+    func refreshPortfolioTotals() {
+        guard let databaseManager else { return }
+        do {
+            portfolioTotals = try databaseManager.portfolioTotals()
+        } catch {
+            NSLog("FinTrack portfolio totals query failed: %@", error.localizedDescription)
+        }
     }
 
     func createHolding(
@@ -239,6 +255,7 @@ final class AppModel: ObservableObject {
         refreshAssets()
         refreshHoldings()
         refreshRecurringInvestments()
+        refreshPortfolioTotals()
     }
 
     func refreshLiabilities() {
@@ -730,6 +747,11 @@ private func money(_ value: Double, currency: String) -> String {
     default: prefix = "\(currency) "
     }
     return "\(prefix)\(String(format: "%.2f", value))"
+}
+
+private func signedNTD(_ value: Double) -> String {
+    let prefix = value >= 0 ? "+" : "-"
+    return "\(prefix)\(ntd(abs(value)))"
 }
 
 struct AddAssetSheet: View {
@@ -1270,6 +1292,7 @@ struct AddHoldingSheet: View {
                 isRecurringHolding: isRecurringHolding
             )
             dismiss()
+            Task { await appModel.refreshMarketData() }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1382,12 +1405,23 @@ struct PortfolioView: View {
 
     var body: some View {
         let displayedHoldings = appModel.holdingRecords.map(makePortfolioHolding)
+        let portfolioTotals = appModel.portfolioTotals
 
         VStack(spacing: 16) {
             HStack(spacing: 16) {
-                PortfolioMetricCard(title: "TOTAL P&L", value: "—", detail: "No market prices", tint: .primary)
+                PortfolioMetricCard(
+                    title: "TOTAL P&L",
+                    value: portfolioTotals.pricedHoldings > 0 ? signedNTD(portfolioTotals.totalPLNTD) : "—",
+                    detail: portfolioTotals.pricedHoldings > 0 ? "NTD converted" : "No market prices",
+                    tint: portfolioTotals.totalPLNTD >= 0 ? .green : .red
+                )
                 PortfolioMetricCard(title: "TODAY", value: "—", detail: "No market prices", tint: .primary)
-                PortfolioMetricCard(title: "INVESTED", value: "—", detail: "\(displayedHoldings.count) holdings", tint: .primary)
+                PortfolioMetricCard(
+                    title: "INVESTED",
+                    value: portfolioTotals.investedNTD > 0 ? ntd(portfolioTotals.investedNTD) : "—",
+                    detail: "\(displayedHoldings.count) holdings",
+                    tint: .primary
+                )
             }
             .padding(.horizontal, 24)
 
@@ -1433,6 +1467,7 @@ struct PortfolioView: View {
         return PortfolioHolding(
             id: holding.id,
             symbol: holding.symbol,
+            securityName: holding.securityName,
             quantity: String(format: "%.4f", holding.shares),
             average: average,
             price: price,
@@ -1528,7 +1563,7 @@ struct PositionsCard: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(holding.symbol).font(.headline)
-                    Text("\(holding.quantity) shares")
+                    Text("\(holding.quantity) shares · \(holding.securityName)")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
@@ -1736,6 +1771,7 @@ private func chartPanel<Content: View>(title: String, @ViewBuilder content: () -
 struct PortfolioHolding: Identifiable {
     let id: Int64
     let symbol: String
+    let securityName: String
     let quantity: String
     let average: String
     let price: String
