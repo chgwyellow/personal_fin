@@ -30,6 +30,7 @@ final class AppModel: ObservableObject {
         longTerm: 0
     )
     @Published private(set) var assets: [DatabaseManager.AssetRecord] = []
+    @Published private(set) var assetCategoryTotals: [String: Double] = [:]
     @Published private(set) var liabilities: [DatabaseManager.LiabilityRecord] = []
     @Published private(set) var holdingRecords: [DatabaseManager.HoldingRecord] = []
     @Published private(set) var recurringRecords: [DatabaseManager.RecurringRecord] = []
@@ -49,6 +50,7 @@ final class AppModel: ObservableObject {
         do {
             assetTotals = try databaseManager.assetTotals()
             assets = try databaseManager.listAssets()
+            assetCategoryTotals = try databaseManager.assetCategoryTotals()
         } catch {
             NSLog("FinTrack asset query failed: %@", error.localizedDescription)
         }
@@ -144,6 +146,49 @@ final class AppModel: ObservableObject {
         } catch {
             NSLog("FinTrack holding deletion failed: %@", error.localizedDescription)
         }
+    }
+
+    func refreshMarketData() async {
+        guard let databaseManager else { return }
+        let records = holdingRecords
+        let formatter = ISO8601DateFormatter()
+        let timestamp = formatter.string(from: Date())
+
+        for holding in records {
+            do {
+                if let quote = try await marketDataClient.fetchQuote(symbol: holding.symbol) {
+                    try databaseManager.insertMarketPrice(
+                        symbol: holding.symbol,
+                        market: holding.market,
+                        price: quote.price,
+                        currency: quote.currency,
+                        observedAt: timestamp,
+                        source: "Yahoo Finance"
+                    )
+                }
+            } catch {
+                NSLog("FinTrack price refresh failed for %@: %@", holding.symbol, error.localizedDescription)
+            }
+        }
+
+        for currency in Set(records.map(\.currency)).filter({ $0 != "NTD" }) {
+            do {
+                if let rate = try await marketDataClient.fetchExchangeRate(baseCurrency: currency) {
+                    try databaseManager.insertExchangeRate(
+                        base: currency,
+                        quote: "NTD",
+                        rate: rate,
+                        observedAt: timestamp,
+                        source: "ExchangeRate-API"
+                    )
+                }
+            } catch {
+                NSLog("FinTrack exchange-rate refresh failed for %@: %@", currency, error.localizedDescription)
+            }
+        }
+
+        refreshAssets()
+        refreshHoldings()
     }
 
     func createHolding(
@@ -564,16 +609,17 @@ struct OverviewView: View {
             }
             .padding(.horizontal, 24)
 
+            Rectangle()
+                .fill(Color.secondary.opacity(0.28))
+                .frame(height: 1)
+                .padding(.horizontal, 24)
+
             ScrollView {
                 VStack(spacing: 16) {
                     HStack(alignment: .top, spacing: 16) {
                         DetailCard(title: "Total Assets Details", showChanges: showChanges, onAdd: {
                     showingAddAsset = true
                         }, sections: assetSections)
-
-                        Divider()
-                            .frame(minHeight: 520)
-                            .opacity(0.35)
 
                         VStack(spacing: 16) {
                             DetailCard(title: "Total Liabilities Details", showChanges: showChanges, onAdd: {
@@ -607,6 +653,7 @@ struct OverviewView: View {
         .onAppear {
             appModel.refreshAssets()
             appModel.refreshLiabilities()
+            Task { await appModel.refreshMarketData() }
         }
     }
 
@@ -628,15 +675,23 @@ struct OverviewView: View {
     }
 
     private func children(for group: String) -> [DetailRow] {
-        appModel.assets
+        let assetNames = appModel.assets
             .filter { $0.assetGroup == group }
-            .map { asset in
-                DetailRow(
-                    name: asset.name,
-                    value: ntd(asset.ntdValue),
+            .map(\.name)
+        let holdingCategories = appModel.assetCategoryTotals.keys.compactMap { key -> String? in
+            guard key.hasPrefix("\(group)|") else { return nil }
+            return String(key.dropFirst(group.count + 1))
+        }
+        let names = Set(assetNames + holdingCategories).sorted(by: >)
+
+        return names.map { name in
+                let asset = appModel.assets.first { $0.assetGroup == group && $0.name == name }
+                return DetailRow(
+                    name: name,
+                    value: ntd(appModel.assetCategoryTotals["\(group)|\(name)"] ?? asset?.ntdValue ?? 0),
                     change: "0.0%",
-                    onDelete: { appModel.deleteAsset(id: asset.id) },
-                    onEdit: { editingAsset = asset }
+                    onDelete: asset.map { record in { appModel.deleteAsset(id: record.id) } },
+                    onEdit: asset.map { record in { editingAsset = record } }
                 )
             }
     }
@@ -664,6 +719,17 @@ private func ntd(_ value: Double) -> String {
     formatter.maximumFractionDigits = 0
     formatter.minimumFractionDigits = 0
     return "NTD \(formatter.string(from: NSNumber(value: value)) ?? "0")"
+}
+
+private func money(_ value: Double, currency: String) -> String {
+    let prefix: String
+    switch currency {
+    case "USD": prefix = "$"
+    case "JPY": prefix = "¥"
+    case "NTD": prefix = "NTD "
+    default: prefix = "\(currency) "
+    }
+    return "\(prefix)\(String(format: "%.2f", value))"
 }
 
 struct AddAssetSheet: View {
@@ -1099,15 +1165,6 @@ struct AddHoldingSheet: View {
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
                 }
             }
-            HStack {
-                Text("Security name")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(securityName.isEmpty ? "Select a symbol" : securityName)
-                    .foregroundStyle(securityName.isEmpty ? .secondary : .primary)
-            }
-            .padding(.vertical, 5)
-
             Picker("Asset group", selection: $assetGroup) {
                 ForEach(groups, id: \.0) { group in
                     Text(group.1).tag(group.0)
@@ -1266,11 +1323,6 @@ struct EditHoldingSheet: View {
                 .padding(8)
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
             }
-            HStack {
-                Text("Security name").foregroundStyle(.secondary)
-                Spacer()
-                Text(securityName)
-            }
             Picker("Market", selection: $market) {
                 Text("Taiwan").tag("TW")
                 Text("United States").tag("US")
@@ -1361,16 +1413,17 @@ struct PortfolioView: View {
         }
         .onAppear {
             appModel.refreshHoldings()
+            Task { await appModel.refreshMarketData() }
         }
     }
 
     private func makePortfolioHolding(_ holding: DatabaseManager.HoldingRecord) -> PortfolioHolding {
         let average = holding.shares > 0
-            ? "\(holding.currency) \(String(format: "%.2f", holding.totalCost / holding.shares))"
+            ? money(holding.totalCost / holding.shares, currency: holding.currency)
             : "—"
-        let price = holding.marketPrice.map { "\(holding.currency) \(String(format: "%.2f", $0))" } ?? "—"
-        let value = holding.marketValue.map { "\(holding.currency) \(String(format: "%.2f", $0))" } ?? "—"
-        let profitLoss = holding.capitalGainLoss.map { "\(holding.currency) \(String(format: "%.2f", $0))" } ?? "—"
+        let price = holding.marketPrice.map { money($0, currency: holding.currency) } ?? "—"
+        let value = holding.marketValue.map { money($0, currency: holding.currency) } ?? "—"
+        let profitLoss = holding.capitalGainLoss.map { money($0, currency: holding.currency) } ?? "—"
         let returnRate: String
         if let gain = holding.capitalGainLoss, holding.totalCost > 0 {
             returnRate = String(format: "%.2f%%", gain / holding.totalCost * 100)
@@ -1388,7 +1441,7 @@ struct PortfolioView: View {
             capitalRate: "—",
             totalRate: returnRate,
             value: value,
-            cost: "\(holding.currency) \(holding.totalCost)",
+            cost: money(holding.totalCost, currency: holding.currency),
             weight: "—",
             totalReturn: "",
             fx: ""
@@ -1475,7 +1528,7 @@ struct PositionsCard: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(holding.symbol).font(.headline)
-                    Text("\(holding.quantity) sh · \(holding.companyName)")
+                    Text("\(holding.quantity) shares")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
@@ -1708,7 +1761,7 @@ struct PortfolioHolding: Identifiable {
         }
     }
 
-    var isNegative: Bool { totalPL.hasPrefix("-") }
+    var isNegative: Bool { totalPL.contains("-") }
 
     var dayChange: String { isNegative ? "↘ -0.3" : "↗ +0.1" }
 

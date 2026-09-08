@@ -16,6 +16,29 @@ struct MarketDataClient {
         let quotes: [SearchResult]
     }
 
+    struct Quote {
+        let price: Double
+        let currency: String
+    }
+
+    private struct ChartResponse: Decodable {
+        let chart: Chart
+        struct Chart: Decodable {
+            let result: [Result]?
+        }
+        struct Result: Decodable {
+            let meta: Meta
+        }
+        struct Meta: Decodable {
+            let regularMarketPrice: Double?
+            let currency: String?
+        }
+    }
+
+    private struct ExchangeResponse: Decodable {
+        let rates: [String: Double]
+    }
+
     enum ClientError: LocalizedError {
         case invalidResponse
 
@@ -41,5 +64,34 @@ struct MarketDataClient {
             .filter { $0.quoteType == "EQUITY" || $0.quoteType == "ETF" }
             .prefix(8)
             .map { $0 }
+    }
+
+    /// Fetches one current quote for a selected symbol.
+    func fetchQuote(symbol: String) async throws -> Quote? {
+        let escapedSymbol = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
+        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(escapedSymbol)?range=1d&interval=1d") else {
+            throw ClientError.invalidResponse
+        }
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
+            throw ClientError.invalidResponse
+        }
+        let decoded = try JSONDecoder().decode(ChartResponse.self, from: data)
+        guard let meta = decoded.chart.result?.first?.meta,
+              let price = meta.regularMarketPrice else { return nil }
+        return Quote(price: price, currency: meta.currency ?? "USD")
+    }
+
+    /// Fetches one exchange rate quoted against Taiwan dollars.
+    func fetchExchangeRate(baseCurrency: String) async throws -> Double? {
+        guard baseCurrency != "NTD" else { return 1 }
+        guard let url = URL(string: "https://open.er-api.com/v6/latest/\(baseCurrency)") else {
+            throw ClientError.invalidResponse
+        }
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
+            throw ClientError.invalidResponse
+        }
+        return try JSONDecoder().decode(ExchangeResponse.self, from: data).rates["TWD"]
     }
 }

@@ -385,6 +385,37 @@ final class DatabaseManager {
         )
     }
 
+    /// Stores one market price observation.
+    func insertMarketPrice(symbol: String, market: String, price: Double, currency: String, observedAt: String, source: String) throws {
+        try insertObservation(
+            sql: "INSERT INTO market_prices (symbol, market, price, currency, observed_at, source) VALUES (?, ?, ?, ?, ?, ?);",
+            values: [symbol, market, String(price), currency, observedAt, source]
+        )
+    }
+
+    /// Stores one exchange-rate observation.
+    func insertExchangeRate(base: String, quote: String, rate: Double, observedAt: String, source: String) throws {
+        try insertObservation(
+            sql: "INSERT INTO exchange_rates (base_currency, quote_currency, rate, observed_at, source) VALUES (?, ?, ?, ?, ?);",
+            values: [base, quote, String(rate), observedAt, source]
+        )
+    }
+
+    private func insertObservation(sql: String, values: [String]) throws {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (index, value) in values.enumerated() {
+            sqlite3_bind_text(statement, Int32(index + 1), value, -1, transientDestructor)
+        }
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+    }
+
     private func latestNumber(sql: String, bindings: [String]) throws -> Double? {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -477,6 +508,47 @@ final class DatabaseManager {
             longTermInvestment: totals["long_term_investment"] ?? 0,
             otherAsset: totals["other_asset"] ?? 0
         )
+    }
+
+    /// Returns NTD totals for each user-defined asset subcategory.
+    func assetCategoryTotals() throws -> [String: Double] {
+        let sql = """
+        SELECT a.asset_group,
+               CASE WHEN h.id IS NULL THEN a.name ELSE a.category END AS child_name,
+               COALESCE(SUM(
+                   CASE
+                       WHEN h.id IS NULL THEN a.ntd_value
+                       WHEN h.currency = 'NTD' THEN COALESCE(
+                           h.shares * (SELECT mp.price FROM market_prices mp
+                               WHERE mp.symbol = h.symbol AND mp.market = h.market
+                               ORDER BY mp.observed_at DESC, mp.id DESC LIMIT 1), a.ntd_value)
+                       ELSE COALESCE(
+                           h.shares * (SELECT mp.price FROM market_prices mp
+                               WHERE mp.symbol = h.symbol AND mp.market = h.market
+                               ORDER BY mp.observed_at DESC, mp.id DESC LIMIT 1) *
+                           (SELECT er.rate FROM exchange_rates er
+                               WHERE er.base_currency = h.currency AND er.quote_currency = 'NTD'
+                               ORDER BY er.observed_at DESC, er.id DESC LIMIT 1), 0)
+                   END
+               ), 0)
+        FROM assets a
+        LEFT JOIN holdings h ON h.asset_id = a.id
+        WHERE a.is_active = 1
+        GROUP BY a.asset_group, child_name;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+
+        var totals: [String: Double] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let group = String(cString: sqlite3_column_text(statement, 0))
+            let child = String(cString: sqlite3_column_text(statement, 1))
+            totals["\(group)|\(child)"] = sqlite3_column_double(statement, 2)
+        }
+        return totals
     }
 
     /// Inserts one liability and returns the generated database ID.
