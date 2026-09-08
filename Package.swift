@@ -8,6 +8,10 @@ let package = Package(
         .executable(name: "PersonalFinanceApp", targets: ["PersonalFinanceApp"])
     ],
     targets: [
-        .executableTarget(name: "PersonalFinanceApp")
+        .systemLibrary(name: "CSQLite", path: "Sources/CSQLite"),
+        .executableTarget(
+            name: "PersonalFinanceApp",
+            dependencies: ["CSQLite"]
+        )
     ]
 )

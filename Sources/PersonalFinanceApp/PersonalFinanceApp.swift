@@ -17,10 +17,21 @@ struct PersonalFinanceApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var databaseManager: DatabaseManager?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        initializeDatabase()
         configureWindows()
+    }
+
+    private func initializeDatabase() {
+        do {
+            databaseManager = try DatabaseManager()
+        } catch {
+            NSLog("FinTrack database initialization failed: %@", error.localizedDescription)
+        }
     }
 
     private func configureWindows() {
@@ -144,14 +155,14 @@ struct SidebarView: View {
         }
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 14) {
-                SidebarIconButton(title: "Settings", systemImage: "gearshape", isSelected: selectedPage == "Settings") {
+                SidebarIconButton(systemImage: "gearshape", isSelected: selectedPage == "Settings") {
                     selectedPage = "Settings"
                 }
-                SidebarIconButton(title: "Help", systemImage: "questionmark.circle", isSelected: selectedPage == "Help") {
+                SidebarIconButton(systemImage: "questionmark.circle", isSelected: selectedPage == "Help") {
                     selectedPage = "Help"
                 }
                 Spacer()
-                SidebarIconButton(title: "Quit", systemImage: "power", isSelected: false) {
+                SidebarIconButton(systemImage: "power", isSelected: false) {
                     NSApp.terminate(nil)
                 }
                 .keyboardShortcut("q", modifiers: [.command])
@@ -197,11 +208,9 @@ struct SidebarView: View {
 }
 
 struct SidebarIconButton: View {
-    let title: String
     let systemImage: String
     let isSelected: Bool
     let action: () -> Void
-    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
@@ -212,25 +221,8 @@ struct SidebarIconButton: View {
                     isSelected ? Color.accentColor : Color.clear,
                     in: RoundedRectangle(cornerRadius: 8)
                 )
-                .overlay(alignment: .trailing) {
-                    if isHovering {
-                        Text(title)
-                            .font(.caption)
-                            .foregroundStyle(.primary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-                            .fixedSize()
-                            .offset(x: 46)
-                            .zIndex(10)
-                            .allowsHitTesting(false)
-                    }
-                }
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovering = hovering
-        }
     }
 }
 
@@ -272,9 +264,9 @@ struct OverviewView: View {
     var body: some View {
         VStack(spacing: 16) {
             HStack(spacing: 16) {
-                MetricCard(title: "Total Assets", value: "NTD 1,827,568", change: "+8.4% vs last month")
-                MetricCard(title: "Total Liabilities", value: "NTD 136,302", change: "-2.1% vs last month")
-                MetricCard(title: "Net Worth", value: "NTD 1,691,266", change: "+9.3% vs last month")
+                MetricCard(title: "Total Assets", value: "NTD 0", change: "0.0% vs last month")
+                MetricCard(title: "Total Liabilities", value: "NTD 0", change: "0.0% vs last month")
+                MetricCard(title: "Net Worth", value: "NTD 0", change: "0.0% vs last month")
             }
             .padding(.horizontal, 24)
 
@@ -284,34 +276,18 @@ struct OverviewView: View {
                         DetailCard(title: "Total Assets Details", showChanges: showChanges, onAdd: {
                             showingAddAsset = true
                         }, sections: [
-                            DetailSection(title: "Liquid Assets", value: "NTD 208,839", change: "+3.2%", children: [
-                                DetailRow(name: "Bank Accounts", value: "NTD 76,636", change: "+1.8%"),
-                                DetailRow(name: "Cash", value: "NTD 50,000", change: "0.0%"),
-                                DetailRow(name: "Margin Deposit", value: "NTD 82,203", change: "+6.4%")
-                            ]),
-                            DetailSection(title: "Liquid Investments", value: "NTD 1,222,362", change: "+10.5%", children: [
-                                DetailRow(name: "U.S. Stocks", value: "NTD 290,857", change: "+8.1%"),
-                                DetailRow(name: "U.S. ETFs", value: "NTD 350,193", change: "+12.4%"),
-                                DetailRow(name: "Taiwan ETFs", value: "NTD 581,312", change: "+9.7%")
-                            ]),
-                            DetailSection(title: "Other Assets", value: "NTD 404,004", change: "0.0%", children: [
-                                DetailRow(name: "Retirement Fund", value: "NTD 376,004", change: "0.0%"),
-                                DetailRow(name: "House Deposit", value: "NTD 28,000", change: "0.0%"),
-                                DetailRow(name: "Other", value: "NTD 0", change: "0.0%")
-                            ])
+                            DetailSection(title: "Liquid Assets", value: "NTD 0", change: "0.0%"),
+                            DetailSection(title: "Liquid Investments", value: "NTD 0", change: "0.0%"),
+                            DetailSection(title: "Other Assets", value: "NTD 0", change: "0.0%")
                         ])
 
                         VStack(spacing: 16) {
                             DetailCard(title: "Total Liabilities Details", showChanges: showChanges, onAdd: {
                                 showingAddLiability = true
                             }, sections: [
-                                DetailSection(title: "Short-term Liabilities", value: "NTD 73,092", change: "-1.4%", children: [
-                                    DetailRow(name: "Credit Card", value: "NTD 73,092", change: "-1.4%")
-                                ]),
-                                DetailSection(title: "Long-term Liabilities", value: "NTD 63,210", change: "-3.0%", children: [
-                                    DetailRow(name: "Student Loan", value: "NTD 63,210", change: "-3.0%")
-                                ]),
-                                DetailSection(title: "Total Liabilities", value: "NTD 136,302", change: "-2.1%")
+                                DetailSection(title: "Short-term Liabilities", value: "NTD 0", change: "0.0%"),
+                                DetailSection(title: "Long-term Liabilities", value: "NTD 0", change: "0.0%"),
+                                DetailSection(title: "Total Liabilities", value: "NTD 0", change: "0.0%")
                             ])
                             FinancialIndicatorsCard()
                         }
@@ -821,11 +797,11 @@ struct PortfolioHolding: Identifiable {
 struct FinancialIndicatorsCard: View {
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     private let indicators = [
-        ("Free Cash Flow", "NTD 1,287,262"),
-        ("Liability Ratio", "7.46%"),
-        ("Cash Ratio", "153.22%"),
-        ("Equity Multiplier", "1.08"),
-        ("Net Worth Growth Rate", "+3.73%")
+        ("Free Cash Flow", "NTD 0"),
+        ("Liability Ratio", "0.00%"),
+        ("Cash Ratio", "0.00%"),
+        ("Equity Multiplier", "0.00"),
+        ("Net Worth Growth Rate", "0.00%")
     ]
 
     var body: some View {
