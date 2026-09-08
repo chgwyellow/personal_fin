@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var assetTotals = DatabaseManager.AssetTotals(
         liquidAsset: 0,
         liquidInvestment: 0,
+        longTermInvestment: 0,
         otherAsset: 0
     )
     @Published private(set) var liabilityTotals = DatabaseManager.LiabilityTotals(
@@ -210,7 +211,7 @@ enum L10n {
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
         "Total Assets": "總資產", "Total Liabilities": "總負債", "Net Worth": "淨值",
         "Total Assets Details": "總資產明細", "Total Liabilities Details": "總負債明細",
-        "Liquid Asset": "流動資產", "Liquid Investment": "流動性投資", "Other Asset": "其他資產",
+        "Liquid Asset": "流動資產", "Liquid Investment": "流動性投資", "Long-term Investment": "長期投資", "Other Asset": "其他資產",
         "Liquid Assets": "流動資產", "Liquid Investments": "流動性投資", "Other Assets": "其他資產",
         "Short-term Liabilities": "短期負債", "Long-term Liabilities": "長期負債",
         "Bank Accounts": "銀行帳戶", "Cash": "現金", "Margin Deposit": "期貨保證金",
@@ -234,7 +235,7 @@ enum L10n {
         "Turn this off to hide month-over-month percentages in asset and liability details.": "關閉後，資產與負債明細將隱藏月增減百分比。",
         "Language": "語言", "English": "英文", "Traditional Chinese": "繁體中文", "Total": "合計",
         "Add Asset": "新增資產", "Asset name": "資產名稱", "Asset Name": "資產名稱",
-        "Category": "分類", "Currency": "幣別", "Amount (NTD)": "金額（新台幣）",
+        "Category": "分類", "Asset group": "資產大分類", "Subcategory": "子分類", "Currency": "幣別", "Amount (NTD)": "金額（新台幣）",
         "Original amount": "原幣金額", "Initial NTD cost": "初始新台幣成本", "Average exchange rate": "平均匯率",
         "Only exchange or opening-fund cost is included. Dividends and investment gains are recorded separately.": "只有換匯或初始入金成本會計入；股息與投資收益會獨立記錄。",
         "Cancel": "取消", "Save": "儲存", "Add Liability": "新增負債", "Liability name": "負債名稱",
@@ -475,6 +476,7 @@ struct OverviewView: View {
         [
             DetailSection(title: "Liquid Assets", value: ntd(appModel.assetTotals.liquidAsset), change: "0.0%", children: children(for: "liquid_asset")),
             DetailSection(title: "Liquid Investments", value: ntd(appModel.assetTotals.liquidInvestment), change: "0.0%", children: children(for: "liquid_investment")),
+            DetailSection(title: "Long-term Investment", value: ntd(appModel.assetTotals.longTermInvestment), change: "0.0%", children: children(for: "long_term_investment")),
             DetailSection(title: "Other Assets", value: ntd(appModel.assetTotals.otherAsset), change: "0.0%", children: children(for: "other_asset"))
         ]
     }
@@ -530,14 +532,20 @@ struct AddAssetSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appModel: AppModel
     @State private var name = ""
-    @State private var category = "Liquid Asset"
+    @State private var assetGroup = "liquid_asset"
+    @State private var category = "General"
     @State private var currency = "NTD"
     @State private var amount = ""
     @State private var ntdCost = ""
     @State private var errorMessage: String?
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
-    private let categories = ["Liquid Asset", "Liquid Investment", "Other Asset"]
+    private let assetGroups = [
+        ("liquid_asset", "Liquid Asset"),
+        ("liquid_investment", "Liquid Investment"),
+        ("long_term_investment", "Long-term Investment"),
+        ("other_asset", "Other Asset")
+    ]
     private let currencies = ["NTD", "USD", "JPY"]
 
     private var exchangeRate: String? {
@@ -556,12 +564,15 @@ struct AddAssetSheet: View {
             TextField(L10n.text("Asset name", language: appLanguage), text: $name)
                 .textFieldStyle(.roundedBorder)
 
-            Picker(L10n.text("Category", language: appLanguage), selection: $category) {
-                ForEach(categories, id: \.self) { category in
-                    Text(L10n.text(category, language: appLanguage)).tag(category)
+            Picker(L10n.text("Asset group", language: appLanguage), selection: $assetGroup) {
+                ForEach(assetGroups, id: \.0) { group in
+                    Text(L10n.text(group.1, language: appLanguage)).tag(group.0)
                 }
             }
             .pickerStyle(.menu)
+
+            TextField(L10n.text("Subcategory", language: appLanguage), text: $category)
+                .textFieldStyle(.roundedBorder)
 
             Picker(L10n.text("Currency", language: appLanguage), selection: $currency) {
                 ForEach(currencies, id: \.self) { currency in
@@ -628,7 +639,7 @@ struct AddAssetSheet: View {
         do {
             try appModel.createAsset(
                 name: name,
-                assetGroup: category.replacingOccurrences(of: " ", with: "_").lowercased(),
+                assetGroup: assetGroup,
                 category: category,
                 currency: currency,
                 value: originalValue,

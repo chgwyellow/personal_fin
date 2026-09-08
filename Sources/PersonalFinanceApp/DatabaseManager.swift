@@ -6,10 +6,11 @@ final class DatabaseManager {
     struct AssetTotals {
         let liquidAsset: Double
         let liquidInvestment: Double
+        let longTermInvestment: Double
         let otherAsset: Double
 
         var total: Double {
-            liquidAsset + liquidInvestment + otherAsset
+            liquidAsset + liquidInvestment + longTermInvestment + otherAsset
         }
     }
 
@@ -88,6 +89,7 @@ final class DatabaseManager {
         do {
             try execute(schemaSQL)
             try addNTDValueColumnIfNeeded()
+            try addHoldingsClassificationColumnsIfNeeded()
         } catch {
             sqlite3_close(database)
             database = nil
@@ -171,6 +173,7 @@ final class DatabaseManager {
         return AssetTotals(
             liquidAsset: totals["liquid_asset"] ?? 0,
             liquidInvestment: totals["liquid_investment"] ?? 0,
+            longTermInvestment: totals["long_term_investment"] ?? 0,
             otherAsset: totals["other_asset"] ?? 0
         )
     }
@@ -469,6 +472,26 @@ final class DatabaseManager {
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS holdings (
+        id INTEGER PRIMARY KEY,
+        asset_id INTEGER NOT NULL UNIQUE,
+        symbol TEXT NOT NULL,
+        security_name TEXT NOT NULL,
+        market TEXT NOT NULL CHECK (market IN ('TW', 'US')),
+        instrument_type TEXT NOT NULL DEFAULT 'stock' CHECK (
+            instrument_type IN ('stock', 'etf')
+        ),
+        etf_type TEXT CHECK (
+            etf_type IS NULL OR etf_type IN ('equity', 'bond')
+        ),
+        currency TEXT NOT NULL,
+        shares NUMERIC NOT NULL DEFAULT 0,
+        total_cost NUMERIC NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS snapshots (
         id INTEGER PRIMARY KEY,
         snapshot_date TEXT NOT NULL UNIQUE,
@@ -486,6 +509,20 @@ final class DatabaseManager {
             try execute("ALTER TABLE assets ADD COLUMN ntd_value NUMERIC NOT NULL DEFAULT 0;")
         } catch DatabaseError.queryFailed(let message) where message.contains("duplicate column name") {
             // The column already exists in databases created by newer versions.
+        }
+    }
+
+    private func addHoldingsClassificationColumnsIfNeeded() throws {
+        do {
+            try execute("ALTER TABLE holdings ADD COLUMN instrument_type TEXT NOT NULL DEFAULT 'stock';")
+        } catch DatabaseError.queryFailed(let message) where message.contains("duplicate column name") {
+            // The column already exists.
+        }
+
+        do {
+            try execute("ALTER TABLE holdings ADD COLUMN etf_type TEXT;")
+        } catch DatabaseError.queryFailed(let message) where message.contains("duplicate column name") {
+            // The column already exists.
         }
     }
 }

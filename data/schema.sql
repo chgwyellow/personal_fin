@@ -7,7 +7,12 @@ CREATE TABLE IF NOT EXISTS assets (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     asset_group TEXT NOT NULL CHECK (
-        asset_group IN ('liquid_asset', 'liquid_investment', 'other_asset')
+        asset_group IN (
+            'liquid_asset',
+            'liquid_investment',
+            'long_term_investment',
+            'other_asset'
+        )
     ),
     category TEXT NOT NULL,
     currency TEXT NOT NULL CHECK (length(currency) = 3),
@@ -25,6 +30,12 @@ CREATE TABLE IF NOT EXISTS holdings (
     symbol TEXT NOT NULL,
     security_name TEXT NOT NULL,
     market TEXT NOT NULL CHECK (market IN ('TW', 'US')),
+    instrument_type TEXT NOT NULL DEFAULT 'stock' CHECK (
+        instrument_type IN ('stock', 'etf')
+    ),
+    etf_type TEXT CHECK (
+        etf_type IS NULL OR etf_type IN ('equity', 'bond')
+    ),
     currency TEXT NOT NULL CHECK (length(currency) = 3),
     shares NUMERIC NOT NULL DEFAULT 0 CHECK (shares >= 0),
     total_cost NUMERIC NOT NULL DEFAULT 0 CHECK (total_cost >= 0),

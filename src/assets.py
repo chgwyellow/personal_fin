@@ -5,7 +5,14 @@ from typing import Any
 from .database import connect_to_database
 
 
-def create_asset(name, asset_group, category, currency, value) -> int | None:
+def create_asset(
+    name,
+    asset_group,
+    category,
+    currency,
+    value,
+    ntd_value: int | float | None = None,
+) -> int | None:
     """Create one asset record in the local SQLite database.
 
     Args:
@@ -14,6 +21,8 @@ def create_asset(name, asset_group, category, currency, value) -> int | None:
         category: More specific category, such as ``bank_account``.
         currency: Three-letter currency code, such as ``NTD`` or ``USD``.
         value: Current value in the asset's original currency.
+        ntd_value: Value used for NTD balance-sheet totals. If omitted, NTD
+            assets use ``value`` and foreign-currency assets use zero.
 
     Returns:
         The ID of the newly created asset.
@@ -22,15 +31,17 @@ def create_asset(name, asset_group, category, currency, value) -> int | None:
     after the insert is complete.
     """
     connection = connect_to_database()
+    if ntd_value is None:
+        ntd_value = value if currency == "NTD" else 0
 
     try:
         cursor = connection.execute(
             """
             INSERT INTO assets
-            (name, asset_group, category, currency, value)
-            VALUES (?, ?, ?, ?, ?);
+            (name, asset_group, category, currency, value, ntd_value)
+            VALUES (?, ?, ?, ?, ?, ?);
             """,
-            (name, asset_group, category, currency, value),
+            (name, asset_group, category, currency, value, ntd_value),
         )
 
         connection.commit()

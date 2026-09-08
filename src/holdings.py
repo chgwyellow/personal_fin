@@ -12,6 +12,8 @@ def create_holding(
     currency: str,
     shares: int | float,
     total_cost: int | float,
+    instrument_type: str = "stock",
+    etf_type: str | None = None,
 ) -> int | None:
     """Create one investment holding linked to an existing asset.
 
@@ -23,6 +25,8 @@ def create_holding(
         currency: The security's original currency.
         shares: The number of shares or units held.
         total_cost: The total cost in the security's original currency.
+        instrument_type: ``stock`` or ``etf``.
+        etf_type: ``equity`` or ``bond`` for ETFs; otherwise ``None``.
 
     Returns:
         The ID of the newly created holding.
@@ -33,10 +37,21 @@ def create_holding(
         holding = connection.execute(
             """
             INSERT INTO holdings
-            (asset_id, symbol, security_name, market, currency, shares, total_cost)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (asset_id, symbol, security_name, market, instrument_type, etf_type,
+             currency, shares, total_cost)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (asset_id, symbol, security_name, market, currency, shares, total_cost),
+            (
+                asset_id,
+                symbol,
+                security_name,
+                market,
+                instrument_type,
+                etf_type,
+                currency,
+                shares,
+                total_cost,
+            ),
         )
         connection.commit()
 
@@ -57,7 +72,7 @@ def get_holding(holding_id: int) -> tuple | None:
         cursor = connection.execute(
             """
             SELECT id, asset_id, symbol, security_name,
-                market, currency, shares, total_cost
+                market, instrument_type, etf_type, currency, shares, total_cost
             FROM holdings
             WHERE id = ?
             """,
@@ -84,7 +99,7 @@ def list_holdings() -> list[tuple]:
         cursor = connection.execute(
             """
             SELECT id, asset_id, symbol, security_name,
-                market, currency, shares, total_cost
+                market, instrument_type, etf_type, currency, shares, total_cost
             FROM holdings
             ORDER BY id
             """
