@@ -106,7 +106,6 @@ final class AppModel: ObservableObject {
         currency: String,
         shares: Double,
         totalCost: Double,
-        ntdValue: Double,
         isRecurringHolding: Bool
     ) throws {
         guard let databaseManager else {
@@ -118,7 +117,7 @@ final class AppModel: ObservableObject {
             category: category,
             currency: currency,
             value: totalCost,
-            ntdValue: ntdValue
+            ntdValue: currency == "NTD" ? totalCost : 0
         )
         let holdingID = try databaseManager.createHolding(
             assetID: assetID,
@@ -707,6 +706,9 @@ struct AddAssetSheet: View {
         let ntdValue: Double
         if currency == "NTD" {
             ntdValue = originalValue
+        } else if originalValue == 0 && ntdCost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Empty category assets can be created with zero value.
+            ntdValue = 0
         } else {
             guard let initialCost = Double(ntdCost), initialCost >= 0 else {
                 errorMessage = "Enter the initial NTD cost for a foreign-currency asset."
@@ -996,7 +998,6 @@ struct AddHoldingSheet: View {
     @State private var currency = "NTD"
     @State private var shares = ""
     @State private var totalCost = ""
-    @State private var ntdValue = ""
     @State private var isRecurringHolding = false
     @State private var errorMessage: String?
 
@@ -1061,10 +1062,10 @@ struct AddHoldingSheet: View {
             .pickerStyle(.menu)
             Toggle("This holding will be used for recurring investment", isOn: $isRecurringHolding)
             TextField("Shares", text: $shares).textFieldStyle(.roundedBorder)
-            TextField("Total cost", text: $totalCost).textFieldStyle(.roundedBorder)
-            if currency != "NTD" {
-                TextField("NTD value", text: $ntdValue).textFieldStyle(.roundedBorder)
-            }
+            TextField("Total cost (\(currency))", text: $totalCost).textFieldStyle(.roundedBorder)
+            Text("Holding cost and P&L stay in the original currency until an exchange transaction is recorded.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             HStack {
                 Spacer()
@@ -1097,15 +1098,6 @@ struct AddHoldingSheet: View {
             errorMessage = "Complete the holding fields with valid values."
             return
         }
-        let convertedValue: Double
-        if currency == "NTD" {
-            convertedValue = cost
-        } else if let enteredNTDValue = Double(ntdValue), enteredNTDValue >= 0 {
-            convertedValue = enteredNTDValue
-        } else {
-            errorMessage = "Enter the NTD value for a foreign holding."
-            return
-        }
         do {
             try appModel.createHolding(
                 assetName: securityName,
@@ -1119,7 +1111,6 @@ struct AddHoldingSheet: View {
                 currency: currency,
                 shares: shareValue,
                 totalCost: cost,
-                ntdValue: convertedValue,
                 isRecurringHolding: isRecurringHolding
             )
             dismiss()

@@ -398,9 +398,14 @@ final class DatabaseManager {
     /// Returns all active asset records for display in the Overview.
     func listAssets() throws -> [AssetRecord] {
         let sql = """
-        SELECT id, name, asset_group, category, currency, value, ntd_value
-        FROM assets
-        WHERE is_active = 1
+        SELECT a.id, a.name, a.asset_group, a.category, a.currency, a.value, a.ntd_value
+        FROM assets a
+        WHERE a.is_active = 1
+          AND NOT EXISTS (
+              SELECT 1
+              FROM holdings h
+              WHERE h.asset_id = a.id
+          )
         ORDER BY name COLLATE NOCASE DESC;
         """
         var statement: OpaquePointer?
