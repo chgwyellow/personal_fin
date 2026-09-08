@@ -52,6 +52,7 @@ final class DatabaseManager {
 
     struct HoldingRecord: Identifiable {
         let id: Int64
+        let assetID: Int64
         let symbol: String
         let securityName: String
         let market: String
@@ -60,6 +61,18 @@ final class DatabaseManager {
         let currency: String
         let shares: Double
         let totalCost: Double
+        let assetGroup: String
+        let category: String
+        let marketPrice: Double?
+        let marketValue: Double?
+        let capitalGainLoss: Double?
+    }
+
+    struct SymbolSuggestion: Identifiable {
+        let id: String
+        let symbol: String
+        let securityName: String
+        let market: String
     }
 
     struct RecurringRecord: Identifiable {
@@ -238,12 +251,59 @@ final class DatabaseManager {
         return sqlite3_last_insert_rowid(database)
     }
 
+    /// Updates the identifier and original-currency values of a holding.
+    func updateHolding(
+        id: Int64,
+        symbol: String,
+        securityName: String,
+        market: String,
+        currency: String,
+        shares: Double,
+        totalCost: Double
+    ) throws {
+        let sql = """
+        UPDATE holdings
+        SET symbol = ?, security_name = ?, market = ?, currency = ?,
+            shares = ?, total_cost = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, symbol, -1, transientDestructor)
+        sqlite3_bind_text(statement, 2, securityName, -1, transientDestructor)
+        sqlite3_bind_text(statement, 3, market, -1, transientDestructor)
+        sqlite3_bind_text(statement, 4, currency, -1, transientDestructor)
+        sqlite3_bind_double(statement, 5, shares)
+        sqlite3_bind_double(statement, 6, totalCost)
+        sqlite3_bind_int64(statement, 7, id)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+    }
+
+    /// Deletes a holding and its private backing asset.
+    func deleteHolding(id: Int64) throws {
+        try execute("""
+        DELETE FROM assets
+        WHERE id = (SELECT asset_id FROM holdings WHERE id = \(id));
+        """)
+    }
+
     /// Returns holdings stored in the local database for Portfolio display.
     func listHoldings() throws -> [HoldingRecord] {
         let sql = """
-        SELECT id, symbol, security_name, market, instrument_type, etf_type,
-               currency, shares, total_cost
-        FROM holdings
+        SELECT h.id, h.asset_id, h.symbol, h.security_name, h.market, h.instrument_type, h.etf_type,
+               h.currency, h.shares, h.total_cost,
+               (SELECT price FROM market_prices mp
+                WHERE mp.symbol = h.symbol AND mp.market = h.market
+                ORDER BY mp.observed_at DESC, mp.id DESC LIMIT 1) AS market_price,
+               a.asset_group, a.category
+        FROM holdings AS h
+        JOIN assets AS a ON a.id = h.asset_id
         ORDER BY security_name COLLATE NOCASE DESC;
         """
         var statement: OpaquePointer?
@@ -256,19 +316,87 @@ final class DatabaseManager {
         while sqlite3_step(statement) == SQLITE_ROW {
             records.append(HoldingRecord(
                 id: sqlite3_column_int64(statement, 0),
-                symbol: String(cString: sqlite3_column_text(statement, 1)),
-                securityName: String(cString: sqlite3_column_text(statement, 2)),
-                market: String(cString: sqlite3_column_text(statement, 3)),
-                instrumentType: String(cString: sqlite3_column_text(statement, 4)),
-                etfType: sqlite3_column_type(statement, 5) == SQLITE_NULL
+                assetID: sqlite3_column_int64(statement, 1),
+                symbol: String(cString: sqlite3_column_text(statement, 2)),
+                securityName: String(cString: sqlite3_column_text(statement, 3)),
+                market: String(cString: sqlite3_column_text(statement, 4)),
+                instrumentType: String(cString: sqlite3_column_text(statement, 5)),
+                etfType: sqlite3_column_type(statement, 6) == SQLITE_NULL
                     ? nil
-                    : String(cString: sqlite3_column_text(statement, 5)),
-                currency: String(cString: sqlite3_column_text(statement, 6)),
-                shares: sqlite3_column_double(statement, 7),
-                totalCost: sqlite3_column_double(statement, 8)
+                    : String(cString: sqlite3_column_text(statement, 6)),
+                currency: String(cString: sqlite3_column_text(statement, 7)),
+                shares: sqlite3_column_double(statement, 8),
+                totalCost: sqlite3_column_double(statement, 9),
+                assetGroup: String(cString: sqlite3_column_text(statement, 11)),
+                category: String(cString: sqlite3_column_text(statement, 12)),
+                marketPrice: sqlite3_column_type(statement, 10) == SQLITE_NULL
+                    ? nil : sqlite3_column_double(statement, 10),
+                marketValue: sqlite3_column_type(statement, 10) == SQLITE_NULL
+                    ? nil : sqlite3_column_double(statement, 10) * sqlite3_column_double(statement, 8),
+                capitalGainLoss: sqlite3_column_type(statement, 10) == SQLITE_NULL
+                    ? nil : sqlite3_column_double(statement, 10) * sqlite3_column_double(statement, 8) - sqlite3_column_double(statement, 9)
             ))
         }
         return records
+    }
+
+    /// Returns cached symbol suggestions for the holding-entry form.
+    func symbolSuggestions(prefix: String, market: String) throws -> [SymbolSuggestion] {
+        let sql = """
+        SELECT symbol, security_name, market FROM holdings
+        WHERE market = ? AND (symbol LIKE ? OR security_name LIKE ?)
+        GROUP BY symbol, security_name, market
+        ORDER BY security_name COLLATE NOCASE
+        LIMIT 8;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        let pattern = "%\(prefix)%"
+        sqlite3_bind_text(statement, 1, market, -1, transientDestructor)
+        sqlite3_bind_text(statement, 2, pattern, -1, transientDestructor)
+        sqlite3_bind_text(statement, 3, pattern, -1, transientDestructor)
+
+        var suggestions: [SymbolSuggestion] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let symbol = String(cString: sqlite3_column_text(statement, 0))
+            let name = String(cString: sqlite3_column_text(statement, 1))
+            suggestions.append(SymbolSuggestion(id: "\(market)-\(symbol)", symbol: symbol, securityName: name, market: market))
+        }
+        return suggestions
+    }
+
+    /// Returns the latest stored market price for a symbol.
+    func latestMarketPrice(symbol: String, market: String) throws -> Double? {
+        try latestNumber(
+            sql: "SELECT price FROM market_prices WHERE symbol = ? AND market = ? ORDER BY observed_at DESC, id DESC LIMIT 1;",
+            bindings: [symbol, market]
+        )
+    }
+
+    /// Returns the latest stored exchange rate for a currency pair.
+    func latestExchangeRate(base: String, quote: String) throws -> Double? {
+        try latestNumber(
+            sql: "SELECT rate FROM exchange_rates WHERE base_currency = ? AND quote_currency = ? ORDER BY observed_at DESC, id DESC LIMIT 1;",
+            bindings: [base, quote]
+        )
+    }
+
+    private func latestNumber(sql: String, bindings: [String]) throws -> Double? {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (index, binding) in bindings.enumerated() {
+            sqlite3_bind_text(statement, Int32(index + 1), binding, -1, transientDestructor)
+        }
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return sqlite3_column_double(statement, 0)
     }
 
     /// Returns active recurring investment plans and their holding names.
@@ -300,9 +428,33 @@ final class DatabaseManager {
     /// Returns asset totals in NTD, grouped by the balance-sheet asset group.
     func assetTotals() throws -> AssetTotals {
         let sql = """
-        SELECT asset_group, COALESCE(SUM(ntd_value), 0)
-        FROM assets
-        WHERE is_active = 1
+        SELECT a.asset_group,
+               COALESCE(SUM(
+                   CASE
+                       WHEN h.id IS NULL THEN a.ntd_value
+                       WHEN h.currency = 'NTD' THEN COALESCE(
+                           h.shares * (
+                               SELECT mp.price FROM market_prices mp
+                               WHERE mp.symbol = h.symbol AND mp.market = h.market
+                               ORDER BY mp.observed_at DESC, mp.id DESC LIMIT 1
+                           ), a.ntd_value
+                       )
+                       ELSE COALESCE(
+                           h.shares * (
+                               SELECT mp.price FROM market_prices mp
+                               WHERE mp.symbol = h.symbol AND mp.market = h.market
+                               ORDER BY mp.observed_at DESC, mp.id DESC LIMIT 1
+                           ) * (
+                               SELECT er.rate FROM exchange_rates er
+                               WHERE er.base_currency = h.currency AND er.quote_currency = 'NTD'
+                               ORDER BY er.observed_at DESC, er.id DESC LIMIT 1
+                           ), 0
+                       )
+                   END
+               ), 0)
+        FROM assets a
+        LEFT JOIN holdings h ON h.asset_id = a.id
+        WHERE a.is_active = 1
         GROUP BY asset_group;
         """
         var statement: OpaquePointer?
@@ -658,6 +810,27 @@ final class DatabaseManager {
         is_active INTEGER NOT NULL DEFAULT 1,
         notes TEXT,
         FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS market_prices (
+        id INTEGER PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        market TEXT NOT NULL,
+        price NUMERIC NOT NULL,
+        currency TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        retrieved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        source TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS exchange_rates (
+        id INTEGER PRIMARY KEY,
+        base_currency TEXT NOT NULL,
+        quote_currency TEXT NOT NULL,
+        rate NUMERIC NOT NULL,
+        observed_at TEXT NOT NULL,
+        retrieved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        source TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS snapshots (

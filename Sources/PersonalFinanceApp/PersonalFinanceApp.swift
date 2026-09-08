@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var holdingRecords: [DatabaseManager.HoldingRecord] = []
     @Published private(set) var recurringRecords: [DatabaseManager.RecurringRecord] = []
     private let databaseManager: DatabaseManager?
+    private let marketDataClient = MarketDataClient()
 
     init() {
         databaseManager = try? DatabaseManager()
@@ -91,6 +92,57 @@ final class AppModel: ObservableObject {
             recurringRecords = try databaseManager.listRecurringInvestments()
         } catch {
             NSLog("FinTrack recurring investment query failed: %@", error.localizedDescription)
+        }
+    }
+
+    func symbolSuggestions(prefix: String, market: String) -> [DatabaseManager.SymbolSuggestion] {
+        guard let databaseManager, !prefix.isEmpty else { return [] }
+        return (try? databaseManager.symbolSuggestions(prefix: prefix, market: market)) ?? []
+    }
+
+    func searchMarketSymbols(query: String) async -> [MarketDataClient.SearchResult] {
+        do {
+            return try await marketDataClient.searchSymbols(query: query)
+        } catch {
+            NSLog("FinTrack symbol search failed: %@", error.localizedDescription)
+            return []
+        }
+    }
+
+    func updateHolding(
+        id: Int64,
+        symbol: String,
+        securityName: String,
+        market: String,
+        currency: String,
+        shares: Double,
+        totalCost: Double
+    ) throws {
+        guard let databaseManager else {
+            throw DatabaseManager.DatabaseError.openFailed("Database is unavailable")
+        }
+        try databaseManager.updateHolding(
+            id: id,
+            symbol: symbol,
+            securityName: securityName,
+            market: market,
+            currency: currency,
+            shares: shares,
+            totalCost: totalCost
+        )
+        refreshAssets()
+        refreshHoldings()
+    }
+
+    func deleteHolding(id: Int64) {
+        guard let databaseManager else { return }
+        do {
+            try databaseManager.deleteHolding(id: id)
+            refreshAssets()
+            refreshHoldings()
+            refreshRecurringInvestments()
+        } catch {
+            NSLog("FinTrack holding deletion failed: %@", error.localizedDescription)
         }
     }
 
@@ -518,6 +570,10 @@ struct OverviewView: View {
                         DetailCard(title: "Total Assets Details", showChanges: showChanges, onAdd: {
                     showingAddAsset = true
                         }, sections: assetSections)
+
+                        Divider()
+                            .frame(minHeight: 520)
+                            .opacity(0.35)
 
                         VStack(spacing: 16) {
                             DetailCard(title: "Total Liabilities Details", showChanges: showChanges, onAdd: {
@@ -999,6 +1055,7 @@ struct AddHoldingSheet: View {
     @State private var shares = ""
     @State private var totalCost = ""
     @State private var isRecurringHolding = false
+    @State private var symbolSuggestions: [MarketDataClient.SearchResult] = []
     @State private var errorMessage: String?
 
     private let groups = [
@@ -1016,8 +1073,40 @@ struct AddHoldingSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add Holding").font(.title2.weight(.bold))
-            TextField("Symbol", text: $symbol).textFieldStyle(.roundedBorder)
-            TextField("Security name", text: $securityName).textFieldStyle(.roundedBorder)
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("Symbol", text: $symbol).textFieldStyle(.roundedBorder)
+                if !symbolSuggestions.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(symbolSuggestions) { suggestion in
+                            Button {
+                                symbol = suggestion.symbol
+                                securityName = suggestion.displayName
+                                symbolSuggestions = []
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(suggestion.symbol)
+                                    Text(suggestion.displayName)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 5)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(8)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            HStack {
+                Text("Security name")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(securityName.isEmpty ? "Select a symbol" : securityName)
+                    .foregroundStyle(securityName.isEmpty ? .secondary : .primary)
+            }
+            .padding(.vertical, 5)
 
             Picker("Asset group", selection: $assetGroup) {
                 ForEach(groups, id: \.0) { group in
@@ -1086,6 +1175,16 @@ struct AddHoldingSheet: View {
         .onChange(of: assetGroup) { _, _ in
             subcategory = availableSubcategories.first ?? ""
         }
+        .onChange(of: symbol) { _, newValue in
+            Task {
+                symbolSuggestions = await appModel.searchMarketSymbols(query: newValue)
+            }
+        }
+        .onChange(of: market) { _, _ in
+            Task {
+                symbolSuggestions = await appModel.searchMarketSymbols(query: symbol)
+            }
+        }
     }
 
     private func save() {
@@ -1120,9 +1219,114 @@ struct AddHoldingSheet: View {
     }
 }
 
+struct EditHoldingSheet: View {
+    let holding: DatabaseManager.HoldingRecord
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var symbol: String
+    @State private var securityName: String
+    @State private var market: String
+    @State private var currency: String
+    @State private var shares: String
+    @State private var totalCost: String
+    @State private var suggestions: [MarketDataClient.SearchResult] = []
+    @State private var errorMessage: String?
+
+    init(holding: DatabaseManager.HoldingRecord) {
+        self.holding = holding
+        _symbol = State(initialValue: holding.symbol)
+        _securityName = State(initialValue: holding.securityName)
+        _market = State(initialValue: holding.market)
+        _currency = State(initialValue: holding.currency)
+        _shares = State(initialValue: String(holding.shares))
+        _totalCost = State(initialValue: String(holding.totalCost))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Edit Holding").font(.title2.weight(.bold))
+            TextField("Symbol", text: $symbol).textFieldStyle(.roundedBorder)
+            if !suggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(suggestions) { suggestion in
+                        Button {
+                            symbol = suggestion.symbol
+                            securityName = suggestion.displayName
+                            suggestions = []
+                        } label: {
+                            VStack(alignment: .leading) {
+                                Text(suggestion.symbol)
+                                Text(suggestion.displayName).font(.caption).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(8)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            }
+            HStack {
+                Text("Security name").foregroundStyle(.secondary)
+                Spacer()
+                Text(securityName)
+            }
+            Picker("Market", selection: $market) {
+                Text("Taiwan").tag("TW")
+                Text("United States").tag("US")
+            }
+            .pickerStyle(.menu)
+            Picker("Currency", selection: $currency) {
+                Text("NTD").tag("NTD")
+                Text("USD").tag("USD")
+            }
+            .pickerStyle(.menu)
+            TextField("Shares", text: $shares).textFieldStyle(.roundedBorder)
+            TextField("Total cost (\(currency))", text: $totalCost).textFieldStyle(.roundedBorder)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 440)
+        .onChange(of: symbol) { _, newValue in
+            Task { suggestions = await appModel.searchMarketSymbols(query: newValue) }
+        }
+    }
+
+    private func save() {
+        guard !symbol.isEmpty, !securityName.isEmpty,
+              let shareValue = Double(shares), shareValue >= 0,
+              let cost = Double(totalCost), cost >= 0 else {
+            errorMessage = "Enter valid holding values."
+            return
+        }
+        do {
+            try appModel.updateHolding(
+                id: holding.id,
+                symbol: symbol,
+                securityName: securityName,
+                market: market,
+                currency: currency,
+                shares: shareValue,
+                totalCost: cost
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
 struct PortfolioView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var showingAddHolding = false
+    @State private var editingHolding: DatabaseManager.HoldingRecord?
 
     var body: some View {
         let displayedHoldings = appModel.holdingRecords.map(makePortfolioHolding)
@@ -1138,7 +1342,12 @@ struct PortfolioView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     AllocationPlaceholderCard()
-                    PositionsCard(holdings: displayedHoldings, onAdd: { showingAddHolding = true })
+                    PositionsCard(
+                        holdings: displayedHoldings,
+                        onAdd: { showingAddHolding = true },
+                        onEdit: { id in editingHolding = appModel.holdingRecords.first { $0.id == id } },
+                        onDelete: { id in appModel.deleteHolding(id: id) }
+                    )
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
@@ -1146,6 +1355,9 @@ struct PortfolioView: View {
         }
         .sheet(isPresented: $showingAddHolding) {
             AddHoldingSheet()
+        }
+        .sheet(item: $editingHolding) { holding in
+            EditHoldingSheet(holding: holding)
         }
         .onAppear {
             appModel.refreshHoldings()
@@ -1156,16 +1368,26 @@ struct PortfolioView: View {
         let average = holding.shares > 0
             ? "\(holding.currency) \(String(format: "%.2f", holding.totalCost / holding.shares))"
             : "—"
+        let price = holding.marketPrice.map { "\(holding.currency) \(String(format: "%.2f", $0))" } ?? "—"
+        let value = holding.marketValue.map { "\(holding.currency) \(String(format: "%.2f", $0))" } ?? "—"
+        let profitLoss = holding.capitalGainLoss.map { "\(holding.currency) \(String(format: "%.2f", $0))" } ?? "—"
+        let returnRate: String
+        if let gain = holding.capitalGainLoss, holding.totalCost > 0 {
+            returnRate = String(format: "%.2f%%", gain / holding.totalCost * 100)
+        } else {
+            returnRate = "—"
+        }
         return PortfolioHolding(
+            id: holding.id,
             symbol: holding.symbol,
             quantity: String(format: "%.4f", holding.shares),
             average: average,
-            price: "—",
-            capitalPL: "—",
-            totalPL: "—",
+            price: price,
+            capitalPL: profitLoss,
+            totalPL: profitLoss,
             capitalRate: "—",
-            totalRate: "—",
-            value: "—",
+            totalRate: returnRate,
+            value: value,
             cost: "\(holding.currency) \(holding.totalCost)",
             weight: "—",
             totalReturn: "",
@@ -1197,6 +1419,8 @@ struct PortfolioMetricCard: View {
 struct PositionsCard: View {
     let holdings: [PortfolioHolding]
     let onAdd: () -> Void
+    let onEdit: (Int64) -> Void
+    let onDelete: (Int64) -> Void
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
@@ -1269,6 +1493,10 @@ struct PositionsCard: View {
         }
         .padding(.horizontal, 20).padding(.vertical, 8)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1) }
+        .contextMenu {
+            Button("Edit") { onEdit(holding.id) }
+            Button("Delete", role: .destructive) { onDelete(holding.id) }
+        }
     }
 }
 
@@ -1453,7 +1681,7 @@ private func chartPanel<Content: View>(title: String, @ViewBuilder content: () -
 }
 
 struct PortfolioHolding: Identifiable {
-    let id = UUID()
+    let id: Int64
     let symbol: String
     let quantity: String
     let average: String
