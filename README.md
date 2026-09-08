@@ -53,6 +53,7 @@ integration and interactive data entry will be connected in later iterations.
 
 ## Project Information
 
+- Product name: FinTrack
 - Start date: 2026-09-02
 - Current version: 0.1.0
 - Development platform: macOS
