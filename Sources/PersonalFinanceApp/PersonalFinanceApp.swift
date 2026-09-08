@@ -5,13 +5,97 @@ import SwiftUI
 @main
 struct PersonalFinanceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var appModel = AppModel()
 
     var body: some Scene {
         WindowGroup {
             DashboardView()
+                .environmentObject(appModel)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+    }
+}
+
+@MainActor
+final class AppModel: ObservableObject {
+    @Published private(set) var assetTotals = DatabaseManager.AssetTotals(
+        liquidAsset: 0,
+        liquidInvestment: 0,
+        otherAsset: 0
+    )
+    @Published private(set) var liabilityTotals = DatabaseManager.LiabilityTotals(
+        shortTerm: 0,
+        longTerm: 0
+    )
+    private let databaseManager: DatabaseManager?
+
+    init() {
+        databaseManager = try? DatabaseManager()
+        refreshAssets()
+        refreshLiabilities()
+    }
+
+    func refreshAssets() {
+        guard let databaseManager else { return }
+        do {
+            assetTotals = try databaseManager.assetTotals()
+        } catch {
+            NSLog("FinTrack asset query failed: %@", error.localizedDescription)
+        }
+    }
+
+    func createAsset(
+        name: String,
+        assetGroup: String,
+        category: String,
+        currency: String,
+        value: Double,
+        ntdValue: Double
+    ) throws {
+        guard let databaseManager else {
+            throw DatabaseManager.DatabaseError.openFailed("Database is unavailable")
+        }
+        _ = try databaseManager.createAsset(
+            name: name,
+            assetGroup: assetGroup,
+            category: category,
+            currency: currency,
+            value: value,
+            ntdValue: ntdValue
+        )
+        refreshAssets()
+    }
+
+    func refreshLiabilities() {
+        guard let databaseManager else { return }
+        do {
+            liabilityTotals = try databaseManager.liabilityTotals()
+        } catch {
+            NSLog("FinTrack liability query failed: %@", error.localizedDescription)
+        }
+    }
+
+    func createLiability(
+        name: String,
+        liabilityGroup: String,
+        category: String,
+        currency: String,
+        balance: Double,
+        interestRate: Double?
+    ) throws {
+        guard let databaseManager else {
+            throw DatabaseManager.DatabaseError.openFailed("Database is unavailable")
+        }
+        _ = try databaseManager.createLiability(
+            name: name,
+            liabilityGroup: liabilityGroup,
+            category: category,
+            currency: currency,
+            balance: balance,
+            interestRate: interestRate
+        )
+        refreshLiabilities()
     }
 }
 
@@ -258,15 +342,16 @@ struct DashboardContentView: View {
 
 struct OverviewView: View {
     let showChanges: Bool
+    @EnvironmentObject private var appModel: AppModel
     @State private var showingAddAsset = false
     @State private var showingAddLiability = false
 
     var body: some View {
         VStack(spacing: 16) {
             HStack(spacing: 16) {
-                MetricCard(title: "Total Assets", value: "NTD 0", change: "0.0% vs last month")
-                MetricCard(title: "Total Liabilities", value: "NTD 0", change: "0.0% vs last month")
-                MetricCard(title: "Net Worth", value: "NTD 0", change: "0.0% vs last month")
+                MetricCard(title: "Total Assets", value: ntd(appModel.assetTotals.total), change: "0.0% vs last month")
+                MetricCard(title: "Total Liabilities", value: ntd(appModel.liabilityTotals.total), change: "0.0% vs last month")
+                MetricCard(title: "Net Worth", value: ntd(appModel.assetTotals.total - appModel.liabilityTotals.total), change: "0.0% vs last month")
             }
             .padding(.horizontal, 24)
 
@@ -276,18 +361,18 @@ struct OverviewView: View {
                         DetailCard(title: "Total Assets Details", showChanges: showChanges, onAdd: {
                             showingAddAsset = true
                         }, sections: [
-                            DetailSection(title: "Liquid Assets", value: "NTD 0", change: "0.0%"),
-                            DetailSection(title: "Liquid Investments", value: "NTD 0", change: "0.0%"),
-                            DetailSection(title: "Other Assets", value: "NTD 0", change: "0.0%")
+                            DetailSection(title: "Liquid Assets", value: ntd(appModel.assetTotals.liquidAsset), change: "0.0%"),
+                            DetailSection(title: "Liquid Investments", value: ntd(appModel.assetTotals.liquidInvestment), change: "0.0%"),
+                            DetailSection(title: "Other Assets", value: ntd(appModel.assetTotals.otherAsset), change: "0.0%")
                         ])
 
                         VStack(spacing: 16) {
                             DetailCard(title: "Total Liabilities Details", showChanges: showChanges, onAdd: {
                                 showingAddLiability = true
                             }, sections: [
-                                DetailSection(title: "Short-term Liabilities", value: "NTD 0", change: "0.0%"),
-                                DetailSection(title: "Long-term Liabilities", value: "NTD 0", change: "0.0%"),
-                                DetailSection(title: "Total Liabilities", value: "NTD 0", change: "0.0%")
+                                DetailSection(title: "Short-term Liabilities", value: ntd(appModel.liabilityTotals.shortTerm), change: "0.0%"),
+                                DetailSection(title: "Long-term Liabilities", value: ntd(appModel.liabilityTotals.longTerm), change: "0.0%"),
+                                DetailSection(title: "Total Liabilities", value: ntd(appModel.liabilityTotals.total), change: "0.0%")
                             ])
                             FinancialIndicatorsCard()
                         }
@@ -305,16 +390,26 @@ struct OverviewView: View {
         .sheet(isPresented: $showingAddLiability) {
             AddLiabilitySheet()
         }
+        .onAppear {
+            appModel.refreshAssets()
+            appModel.refreshLiabilities()
+        }
     }
+}
+
+private func ntd(_ value: Double) -> String {
+    String(format: "NTD %,.0f", value)
 }
 
 struct AddAssetSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
     @State private var name = ""
     @State private var category = "Liquid Asset"
     @State private var currency = "NTD"
     @State private var amount = ""
     @State private var ntdCost = ""
+    @State private var errorMessage: String?
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     private let categories = ["Liquid Asset", "Liquid Investment", "Other Asset"]
@@ -372,25 +467,65 @@ struct AddAssetSheet: View {
                 Spacer()
                 Button(L10n.text("Cancel", language: appLanguage)) { dismiss() }
                 Button(L10n.text("Save", language: appLanguage)) {
-                    // Demo only: database insertion will be connected later.
-                    dismiss()
+                    saveAsset()
                 }
                 .buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
         .padding(24)
         .frame(width: 420)
     }
+
+    private func saveAsset() {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let originalValue = Double(amount),
+              originalValue >= 0 else {
+            errorMessage = "Enter an asset name and a valid amount."
+            return
+        }
+
+        let ntdValue: Double
+        if currency == "NTD" {
+            ntdValue = originalValue
+        } else {
+            guard let initialCost = Double(ntdCost), initialCost >= 0 else {
+                errorMessage = "Enter the initial NTD cost for a foreign-currency asset."
+                return
+            }
+            ntdValue = initialCost
+        }
+
+        do {
+            try appModel.createAsset(
+                name: name,
+                assetGroup: category.replacingOccurrences(of: " ", with: "_").lowercased(),
+                category: category,
+                currency: currency,
+                value: originalValue,
+                ntdValue: ntdValue
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 struct AddLiabilitySheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
     @State private var name = ""
     @State private var group = "Short-term Liability"
     @State private var category = "Credit Card"
     @State private var currency = "NTD"
     @State private var balance = ""
     @State private var interestRate = ""
+    @State private var errorMessage: String?
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     private let groups = ["Short-term Liability", "Long-term Liability"]
@@ -431,14 +566,47 @@ struct AddLiabilitySheet: View {
                 Spacer()
                 Button(L10n.text("Cancel", language: appLanguage)) { dismiss() }
                 Button(L10n.text("Save", language: appLanguage)) {
-                    // Demo only: database insertion will be connected later.
-                    dismiss()
+                    saveLiability()
                 }
                 .buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
         .padding(24)
         .frame(width: 420)
+    }
+
+    private func saveLiability() {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let balanceValue = Double(balance),
+              balanceValue >= 0 else {
+            errorMessage = "Enter a liability name and a valid balance."
+            return
+        }
+
+        let parsedInterestRate = interestRate.isEmpty ? nil : Double(interestRate)
+        guard interestRate.isEmpty || parsedInterestRate != nil else {
+            errorMessage = "Enter a valid interest rate."
+            return
+        }
+
+        do {
+            try appModel.createLiability(
+                name: name,
+                liabilityGroup: group == "Short-term Liability" ? "short_term" : "long_term",
+                category: category,
+                currency: currency,
+                balance: balanceValue,
+                interestRate: parsedInterestRate
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 

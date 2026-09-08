@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS assets (
     category TEXT NOT NULL,
     currency TEXT NOT NULL CHECK (length(currency) = 3),
     value NUMERIC NOT NULL DEFAULT 0 CHECK (value >= 0),
+    ntd_value NUMERIC NOT NULL DEFAULT 0 CHECK (ntd_value >= 0),
     notes TEXT,
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
