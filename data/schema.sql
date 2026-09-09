@@ -88,6 +88,17 @@ CREATE TABLE IF NOT EXISTS dividends (
     FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS foreign_currency_transactions (
+    id INTEGER PRIMARY KEY,
+    purpose TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    foreign_amount NUMERIC NOT NULL,
+    ntd_amount NUMERIC,
+    rate NUMERIC,
+    trade_date TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS liabilities (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,

@@ -10,6 +10,10 @@
 	<string>com.yellow.fintrack</string>
 	<key>CFBundleIconFile</key>
 	<string>FinTrack.icns</string>
+	<key>CFBundleIconFiles</key>
+	<array>
+		<string>FinTrack.icns</string>
+	</array>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

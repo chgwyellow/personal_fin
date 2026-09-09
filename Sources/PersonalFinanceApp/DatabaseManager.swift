@@ -128,6 +128,16 @@ final class DatabaseManager {
         let currency: String
     }
 
+    struct ForeignCurrencyTransactionRecord: Identifiable {
+        let id: Int64
+        let purpose: String
+        let currency: String
+        let foreignAmount: Double
+        let ntdAmount: Double?
+        let rate: Double?
+        let tradeDate: String
+    }
+
     struct IncomeStatementItem: Identifiable {
         let id: Int64
         let parentID: Int64?
@@ -154,6 +164,130 @@ final class DatabaseManager {
         try executePrepared(sql) { statement in
             let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
             sqlite3_bind_text(statement, 1, name, -1, destructor)
+        }
+    }
+
+    func listForeignCurrencyTransactions() throws -> [ForeignCurrencyTransactionRecord] {
+        let sql = """
+        SELECT id, purpose, currency, foreign_amount, ntd_amount, rate, trade_date
+        FROM foreign_currency_transactions
+        ORDER BY trade_date DESC, id DESC;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+
+        var records: [ForeignCurrencyTransactionRecord] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            records.append(ForeignCurrencyTransactionRecord(
+                id: sqlite3_column_int64(statement, 0),
+                purpose: String(cString: sqlite3_column_text(statement, 1)),
+                currency: String(cString: sqlite3_column_text(statement, 2)),
+                foreignAmount: sqlite3_column_double(statement, 3),
+                ntdAmount: sqlite3_column_type(statement, 4) == SQLITE_NULL ? nil : sqlite3_column_double(statement, 4),
+                rate: sqlite3_column_type(statement, 5) == SQLITE_NULL ? nil : sqlite3_column_double(statement, 5),
+                tradeDate: String(cString: sqlite3_column_text(statement, 6))
+            ))
+        }
+        return records
+    }
+
+    func createForeignCurrencyTransaction(
+        purpose: String,
+        currency: String,
+        foreignAmount: Double,
+        ntdAmount: Double?,
+        rate: Double?,
+        tradeDate: String
+    ) throws {
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try adjustForeignCurrencyBalance(currency: currency, foreignAmount: foreignAmount, ntdAmount: ntdAmount, rate: rate)
+            let sql = """
+            INSERT INTO foreign_currency_transactions
+                (purpose, currency, foreign_amount, ntd_amount, rate, trade_date)
+            VALUES (?, ?, ?, ?, ?, ?);
+            """
+            try executePrepared(sql) { statement in
+                let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+                sqlite3_bind_text(statement, 1, purpose, -1, destructor)
+                sqlite3_bind_text(statement, 2, currency, -1, destructor)
+                sqlite3_bind_double(statement, 3, foreignAmount)
+                if let ntdAmount { sqlite3_bind_double(statement, 4, ntdAmount) } else { sqlite3_bind_null(statement, 4) }
+                if let rate { sqlite3_bind_double(statement, 5, rate) } else { sqlite3_bind_null(statement, 5) }
+                sqlite3_bind_text(statement, 6, tradeDate, -1, destructor)
+            }
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    func deleteForeignCurrencyTransaction(id: Int64) throws {
+        guard let transaction = try foreignCurrencyTransaction(id: id) else { return }
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try adjustForeignCurrencyBalance(currency: transaction.currency, foreignAmount: -transaction.foreignAmount, ntdAmount: transaction.ntdAmount.map { -$0 }, rate: transaction.rate)
+            try execute("DELETE FROM foreign_currency_transactions WHERE id = \(id);")
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    private func foreignCurrencyTransaction(id: Int64) throws -> ForeignCurrencyTransactionRecord? {
+        let sql = "SELECT id, purpose, currency, foreign_amount, ntd_amount, rate, trade_date FROM foreign_currency_transactions WHERE id = ?;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw DatabaseError.queryFailed(databaseMessage) }
+        sqlite3_bind_int64(statement, 1, id)
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return ForeignCurrencyTransactionRecord(
+            id: sqlite3_column_int64(statement, 0),
+            purpose: String(cString: sqlite3_column_text(statement, 1)),
+            currency: String(cString: sqlite3_column_text(statement, 2)),
+            foreignAmount: sqlite3_column_double(statement, 3),
+            ntdAmount: sqlite3_column_type(statement, 4) == SQLITE_NULL ? nil : sqlite3_column_double(statement, 4),
+            rate: sqlite3_column_type(statement, 5) == SQLITE_NULL ? nil : sqlite3_column_double(statement, 5),
+            tradeDate: String(cString: sqlite3_column_text(statement, 6))
+        )
+    }
+
+    private func adjustForeignCurrencyBalance(currency: String, foreignAmount: Double, ntdAmount: Double?, rate: Double?) throws {
+        let sql = "SELECT id, value, ntd_value FROM assets WHERE is_active = 1 AND currency = ? AND category = 'Foreign Currency' ORDER BY id LIMIT 1;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw DatabaseError.queryFailed(databaseMessage) }
+        let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, currency, -1, destructor)
+
+        let assetID: Int64
+        let currentValue: Double
+        let currentNTDValue: Double
+        if sqlite3_step(statement) == SQLITE_ROW {
+            assetID = sqlite3_column_int64(statement, 0)
+            currentValue = sqlite3_column_double(statement, 1)
+            currentNTDValue = sqlite3_column_double(statement, 2)
+        } else {
+            guard foreignAmount > 0 else { throw DatabaseError.queryFailed("No active \(currency) balance exists for this transaction.") }
+            assetID = try createAsset(name: currency, assetGroup: "liquid_asset", category: "Foreign Currency", currency: currency, value: 0, ntdValue: 0)
+            currentValue = 0
+            currentNTDValue = 0
+        }
+
+        let newValue = currentValue + foreignAmount
+        guard newValue >= -0.0000001 else { throw DatabaseError.queryFailed("The transaction exceeds the current \(currency) balance.") }
+        let averageRate = currentValue > 0 ? currentNTDValue / currentValue : (rate ?? 0)
+        let costChange = foreignAmount >= 0 ? (ntdAmount ?? 0) : (-abs(foreignAmount) * averageRate)
+        let updateSQL = "UPDATE assets SET value = ?, ntd_value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;"
+        try executePrepared(updateSQL) { statement in
+            sqlite3_bind_double(statement, 1, max(0, newValue))
+            sqlite3_bind_double(statement, 2, max(0, currentNTDValue + costChange))
+            sqlite3_bind_int64(statement, 3, assetID)
         }
     }
 
@@ -1289,6 +1423,17 @@ final class DatabaseManager {
         currency TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS foreign_currency_transactions (
+        id INTEGER PRIMARY KEY,
+        purpose TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        foreign_amount NUMERIC NOT NULL,
+        ntd_amount NUMERIC,
+        rate NUMERIC,
+        trade_date TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS income_statement_items (

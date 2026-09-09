@@ -42,6 +42,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var holdingRecords: [DatabaseManager.HoldingRecord] = []
     @Published private(set) var recurringRecords: [DatabaseManager.RecurringRecord] = []
     @Published private(set) var dividendRecords: [DatabaseManager.DividendRecord] = []
+    @Published private(set) var foreignCurrencyTransactions: [DatabaseManager.ForeignCurrencyTransactionRecord] = []
     @Published private(set) var incomeStatementItems: [DatabaseManager.IncomeStatementItem] = []
     @Published private(set) var statementAccounts: [String] = []
     @Published private(set) var foreignExchangeRates: [String: Double] = [:]
@@ -57,6 +58,7 @@ final class AppModel: ObservableObject {
         refreshHoldings()
         refreshRecurringInvestments()
         refreshDividends()
+        refreshForeignCurrencyTransactions()
         refreshIncomeStatementItems()
         refreshStatementAccounts()
         refreshPortfolioTotals()
@@ -187,6 +189,43 @@ final class AppModel: ObservableObject {
     func refreshDividends() {
         guard let databaseManager else { return }
         dividendRecords = (try? databaseManager.listDividends()) ?? []
+    }
+
+    func refreshForeignCurrencyTransactions() {
+        guard let databaseManager else { return }
+        foreignCurrencyTransactions = (try? databaseManager.listForeignCurrencyTransactions()) ?? []
+    }
+
+    func createForeignCurrencyTransaction(
+        purpose: String,
+        currency: String,
+        foreignAmount: Double,
+        ntdAmount: Double?,
+        rate: Double?,
+        tradeDate: String
+    ) throws {
+        guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
+        try databaseManager.createForeignCurrencyTransaction(
+            purpose: purpose,
+            currency: currency,
+            foreignAmount: foreignAmount,
+            ntdAmount: ntdAmount,
+            rate: rate,
+            tradeDate: tradeDate
+        )
+        refreshForeignCurrencyTransactions()
+        refreshAssets()
+    }
+
+    func deleteForeignCurrencyTransaction(id: Int64) {
+        guard let databaseManager else { return }
+        do {
+            try databaseManager.deleteForeignCurrencyTransaction(id: id)
+            refreshForeignCurrencyTransactions()
+            refreshAssets()
+        } catch {
+            NSLog("FinTrack foreign-currency transaction deletion failed: %@", error.localizedDescription)
+        }
     }
 
     func refreshIncomeStatementItems() {
@@ -622,10 +661,12 @@ enum L10n {
         "Recurring Investment": "定期定額", "Recurring Rules": "定期定額規則", "Click to view investments": "點擊查看投資紀錄", "Foreign Currency": "外幣", "Stock": "股票",
         "Total NTD Equivalent": "新台幣等價總額", "Currencies Held": "持有幣別", "Rates Updated": "匯率更新", "Latest Rate": "最新匯率",
         "live exchange rates": "即時匯率", "ExchangeRate-API": "ExchangeRate-API", "converted from foreign-currency balances": "由外幣餘額換算",
-        "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價", "CURRENCY": "幣別", "SECURITY": "標的", "DATE": "日期", "AMOUNT": "金額",
+        "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價", "CURRENCY": "幣別", "SECURITY": "標的", "DATE": "日期", "AMOUNT": "金額", "TRANSACTIONS": "交易紀錄", "PURPOSE": "用途", "FOREIGN AMOUNT": "原幣金額", "NTD": "新台幣", "SHARES": "股數",
+        "Add foreign-currency transaction": "新增外幣交易", "Transaction type": "交易類型", "Exchange": "換匯", "Exchange direction": "換匯方向", "Buy foreign currency": "買入外幣", "Sell foreign currency back to NTD": "賣出外幣換回新台幣", "Other purpose": "其他用途", "Original currency": "原幣別", "Foreign amount": "原幣金額", "Foreign amount (+ income / - expense)": "原幣金額（收入＋／支出－）", "NTD amount": "新台幣金額", "Rate (NTD per unit)": "匯率（每單位新台幣）", "NTD amount (exchange only)": "新台幣金額（僅換匯）", "Rate (NTD per unit, exchange only)": "匯率（每單位新台幣，僅換匯）", "Purpose": "用途", "Date": "日期", "Exchange transactions require NTD amount and rate.": "換匯交易需要填寫新台幣金額與匯率。", "Other transactions only change the foreign-currency balance; NTD amount and rate are not required.": "其他交易只會變更外幣餘額，不需要填寫新台幣金額與匯率。", "Enter a currency and positive foreign amount.": "請輸入幣別與正的原幣金額。", "Enter a purpose, currency, and positive foreign amount.": "請輸入用途、幣別與正的原幣金額。", "Enter a valid NTD amount and rate for an exchange.": "請輸入有效的新台幣金額與匯率。", "Use a negative foreign amount for investments, spending, or exchanging foreign currency back to NTD. Leave NTD and rate blank for non-exchange transactions.": "投資、支出或換回新台幣時，原幣金額請填負值；非換匯交易的新台幣與匯率請留空。", "Enter a purpose, currency, and non-zero foreign amount.": "請輸入用途、幣別與非零的原幣金額。", "Enter both NTD amount and rate, or leave both blank.": "請同時輸入新台幣金額與匯率，或兩者都留空。", "NTD amount and rate must be greater than zero.": "新台幣金額與匯率必須大於零。",
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
-        "No recurring investments": "目前沒有定期定額",
-        "No market prices": "尚無市場價格", "NTD converted": "已換算新台幣", "holdings": "筆持股", "shares": "股", "MARKET VALUE": "目前市值",
+        "No recurring investments": "目前沒有定期定額", "No recurring rules": "目前沒有定期定額規則", "Add a rule to plan your recurring investments.": "新增規則以規劃定期定額投資。",
+        "No market prices": "尚無市場價格", "NTD converted": "已換算新台幣", "holdings": "筆持股", "shares": "股", "purchases": "筆投資", "monthly": "每月", "day": "日", "currency": "幣別", "currencies": "種幣別", "No foreign-currency balances recorded.": "目前沒有外幣餘額。", "No foreign-currency transactions recorded.": "目前沒有外幣交易紀錄。", "MARKET VALUE": "目前市值",
+        "TOTAL CONTRIBUTED": "累計投入", "TOTAL SHARES": "總股數", "LAST PURCHASE": "最近投資", "SCHEDULES": "排程", "PURCHASES": "投資紀錄", "No purchases recorded. Click + to add the actual transaction.": "尚無投資紀錄，請按＋新增實際交易。",
         "No holdings yet. Click Add to create one.": "目前沒有持股，請按新增建立。",
         "Allocation will appear after holdings and market prices are available.": "建立持股並取得市場價格後，這裡會顯示資產配置。",
         "Total Assets": "總資產", "Total Liabilities": "總負債", "Net Worth": "淨值",
@@ -683,7 +724,7 @@ struct DashboardView: View {
     var body: some View {
         NavigationSplitView {
             SidebarView(selectedPage: $selectedPage)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 240)
+                .navigationSplitViewColumnWidth(240)
         } detail: {
             ZStack(alignment: .topTrailing) {
                 DashboardContentView(pageTitle: selectedPage, selectedPage: $selectedPage)
@@ -721,7 +762,7 @@ struct SidebarView: View {
     @State private var recurringExpanded = false
 
     var body: some View {
-        List(selection: $selectedPage) {
+        List {
             Section {
                 page("Overview", systemImage: "square.grid.2x2")
                 page("Portfolio", systemImage: "chart.pie")
@@ -773,9 +814,18 @@ struct SidebarView: View {
         systemImage: String,
         isChild: Bool = false
     ) -> some View {
-        Label(L10n.text(title, language: appLanguage), systemImage: systemImage)
-            .tag(title)
-            .padding(.leading, isChild ? 22 : 0)
+        HStack(spacing: 8) {
+            Label(L10n.text(title, language: appLanguage), systemImage: systemImage)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .font(selectedPage == title ? .headline.weight(.semibold) : .body)
+        .foregroundStyle(selectedPage == title ? Color.accentColor : .primary)
+        .padding(.leading, isChild ? 22 : 0)
+        .scaleEffect(selectedPage == title ? 1.04 : 1, anchor: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedPage = title }
     }
 
     private func expandablePage(
@@ -783,21 +833,24 @@ struct SidebarView: View {
         systemImage: String,
         isExpanded: Binding<Bool>
     ) -> some View {
-        Button {
-            selectedPage = title
-            isExpanded.wrappedValue.toggle()
-        } label: {
+        HStack(spacing: 8) {
             Label(L10n.text(title, language: appLanguage), systemImage: systemImage)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .foregroundStyle(selectedPage == title ? .white : .primary)
-                .padding(.vertical, 7)
-                .background(
-                    selectedPage == title ? Color.accentColor : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 9)
-                )
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .font(selectedPage == title ? .headline.weight(.semibold) : .body)
+        .foregroundStyle(selectedPage == title ? Color.accentColor : .primary)
+        .scaleEffect(selectedPage == title ? 1.04 : 1, anchor: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .onTapGesture {
+            if selectedPage == title {
+                isExpanded.wrappedValue.toggle()
+            } else {
+                selectedPage = title
+                isExpanded.wrappedValue = true
+            }
+        }
     }
 
 }
@@ -874,8 +927,10 @@ struct ForeignCurrencyView: View {
     @EnvironmentObject private var appModel: AppModel
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @State private var showingAdd = false
+    @State private var showingAddTransaction = false
     @State private var editingAsset: DatabaseManager.AssetRecord?
     @State private var pendingDelete: ForeignCurrencySummary?
+    @State private var pendingDeleteTransaction: DatabaseManager.ForeignCurrencyTransactionRecord?
 
     private var summaries: [ForeignCurrencySummary] {
         let grouped = Dictionary(grouping: appModel.assets.filter { $0.currency != "NTD" }, by: \.currency)
@@ -904,14 +959,14 @@ struct ForeignCurrencyView: View {
                     PortfolioMetricCard(
                         title: "Total NTD Equivalent",
                         value: ntd(totalNTD),
-                        detail: "converted from foreign-currency balances",
+                        detail: L10n.text("converted from foreign-currency balances", language: appLanguage),
                         tint: .primary,
                         height: 100
                     )
                     PortfolioMetricCard(
                         title: "Currencies Held",
                         value: "\(currencyCount)",
-                        detail: currencyCount == 1 ? "currency" : "currencies",
+                        detail: L10n.text(currencyCount == 1 ? "currency" : "currencies", language: appLanguage),
                         tint: .primary,
                         height: 100
                     )
@@ -948,7 +1003,7 @@ struct ForeignCurrencyView: View {
                     .padding(.bottom, 10)
 
                     if summaries.isEmpty {
-                        Text("No foreign-currency balances recorded.")
+                        Text(L10n.text("No foreign-currency balances recorded.", language: appLanguage))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, minHeight: 180)
                     } else {
@@ -982,6 +1037,8 @@ struct ForeignCurrencyView: View {
                 }
                 .background(.background, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+
+                foreignTransactionCard
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
@@ -991,6 +1048,9 @@ struct ForeignCurrencyView: View {
         }
         .sheet(isPresented: $showingAdd) {
             AddForeignCurrencySheet()
+        }
+        .sheet(isPresented: $showingAddTransaction) {
+            ForeignCurrencyTransactionSheet()
         }
         .sheet(item: $editingAsset) { asset in
             EditAssetSheet(asset: asset)
@@ -1007,7 +1067,212 @@ struct ForeignCurrencyView: View {
                 secondaryButton: .cancel()
             )
         }
+        .alert(item: $pendingDeleteTransaction) { transaction in
+            Alert(
+                title: Text("Delete transaction?"),
+                message: Text("This will also reverse its effect on the foreign-currency balance."),
+                primaryButton: .destructive(Text("Delete")) {
+                    appModel.deleteForeignCurrencyTransaction(id: transaction.id)
+                },
+                secondaryButton: .cancel()
+            )
+        }
     }
+
+    private var foreignTransactionCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(L10n.text("TRANSACTIONS", language: appLanguage))
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button(action: { showingAddTransaction = true }) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain)
+                .font(.title3.weight(.semibold))
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
+
+            HStack(spacing: 16) {
+                Text(L10n.text("PURPOSE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
+                Text(L10n.text("CURRENCY", language: appLanguage)).frame(width: 70, alignment: .leading)
+                Text(L10n.text("FOREIGN AMOUNT", language: appLanguage)).frame(width: 120, alignment: .trailing)
+                Text(L10n.text("NTD", language: appLanguage)).frame(width: 90, alignment: .trailing)
+                Text(L10n.text("RATE", language: appLanguage)).frame(width: 95, alignment: .trailing)
+                Text(L10n.text("DATE", language: appLanguage)).frame(width: 95, alignment: .trailing)
+            }
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 40)
+            .padding(.bottom, 10)
+
+            if appModel.foreignCurrencyTransactions.isEmpty {
+                Text(L10n.text("No foreign-currency transactions recorded.", language: appLanguage))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 140)
+            } else {
+                ForEach(appModel.foreignCurrencyTransactions) { transaction in
+                    HStack(spacing: 16) {
+                        Text(transaction.purpose).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        Text(transaction.currency).frame(width: 70, alignment: .leading)
+                        Text(money(transaction.foreignAmount, currency: transaction.currency))
+                            .foregroundStyle(transaction.foreignAmount < 0 ? .red : .primary)
+                            .frame(width: 120, alignment: .trailing)
+                        Text(transaction.ntdAmount.map(ntd) ?? "—")
+                            .frame(width: 90, alignment: .trailing)
+                        Text(transaction.rate.map { String(format: "NTD %.4f", $0) } ?? "—")
+                            .frame(width: 95, alignment: .trailing)
+                        Text(transaction.tradeDate)
+                            .frame(width: 95, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 40)
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+                    .contextMenu {
+                        Button(L10n.text("Delete", language: appLanguage), role: .destructive) {
+                            pendingDeleteTransaction = transaction
+                        }
+                    }
+                }
+            }
+        }
+        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+    }
+}
+
+private struct ForeignCurrencyTransactionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @State private var transactionType = "exchange"
+    @State private var exchangeDirection = "buy"
+    @State private var otherPurpose = ""
+    @State private var currency = ""
+    @State private var foreignAmount = ""
+    @State private var ntdAmount = ""
+    @State private var rate = ""
+    @State private var tradeDate = Date()
+    @State private var errorMessage: String?
+
+    private var currencies: [String] {
+        Array(Set(appModel.assets.map(\.currency).filter { $0 != "NTD" })).sorted()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L10n.text("Add foreign-currency transaction", language: appLanguage))
+                .font(.title2.weight(.bold))
+            Picker(L10n.text("Transaction type", language: appLanguage), selection: $transactionType) {
+                Text(L10n.text("Exchange", language: appLanguage)).tag("exchange")
+                Text(L10n.text("Other", language: appLanguage)).tag("other")
+            }
+            .pickerStyle(.segmented)
+
+            if transactionType == "exchange" {
+                Picker(L10n.text("Exchange direction", language: appLanguage), selection: $exchangeDirection) {
+                    Text(L10n.text("Buy foreign currency", language: appLanguage)).tag("buy")
+                    Text(L10n.text("Sell foreign currency back to NTD", language: appLanguage)).tag("sell")
+                }
+                .pickerStyle(.menu)
+            } else {
+                TextField(L10n.text("Other purpose", language: appLanguage), text: $otherPurpose)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Picker(L10n.text("Original currency", language: appLanguage), selection: $currency) {
+                ForEach(currencies, id: \.self) { code in
+                    Text(code).tag(code)
+                }
+            }
+            TextField(L10n.text(transactionType == "exchange" ? "Foreign amount" : "Foreign amount (+ income / - expense)", language: appLanguage), text: $foreignAmount)
+                .textFieldStyle(.roundedBorder)
+            if transactionType == "exchange" {
+                TextField(L10n.text("NTD amount", language: appLanguage), text: $ntdAmount)
+                    .textFieldStyle(.roundedBorder)
+                TextField(L10n.text("Rate (NTD per unit)", language: appLanguage), text: $rate)
+                    .textFieldStyle(.roundedBorder)
+            }
+            DatePicker(L10n.text("Date", language: appLanguage), selection: $tradeDate, displayedComponents: .date)
+            Text(L10n.text(transactionType == "exchange" ? "Exchange transactions require NTD amount and rate." : "Other transactions only change the foreign-currency balance; NTD amount and rate are not required.", language: appLanguage))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+                Button(L10n.text("Cancel", language: appLanguage)) { dismiss() }
+                Button(L10n.text("Save", language: appLanguage)) { save() }
+                    .buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 500)
+        .onAppear {
+            if currency.isEmpty { currency = currencies.first ?? "" }
+        }
+    }
+
+    private func save() {
+        let trimmedPurpose = otherPurpose.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard transactionType == "exchange" || !trimmedPurpose.isEmpty,
+              !currency.isEmpty,
+              let enteredForeignValue = Double(foreignAmount), enteredForeignValue > 0 else {
+            errorMessage = L10n.text(transactionType == "exchange" ? "Enter a currency and positive foreign amount." : "Enter a purpose, currency, and positive foreign amount.", language: appLanguage)
+            return
+        }
+
+        let foreignValue = transactionType == "exchange" && exchangeDirection == "sell"
+            ? -enteredForeignValue
+            : enteredForeignValue
+
+        let trimmedNTD = ntdAmount.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedRate = rate.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parsedNTD = transactionType == "exchange" ? (trimmedNTD.isEmpty ? nil : Double(trimmedNTD)) : nil
+        var parsedRate = trimmedRate.isEmpty ? nil : Double(trimmedRate)
+        if transactionType == "exchange" {
+            guard let exchangeNTD = parsedNTD, exchangeNTD > 0,
+                  trimmedRate.isEmpty || parsedRate != nil else {
+                errorMessage = L10n.text("Enter a valid NTD amount and rate for an exchange.", language: appLanguage)
+                return
+            }
+            if parsedRate == nil { parsedRate = exchangeNTD / abs(foreignValue) }
+            guard let exchangeRate = parsedRate, exchangeRate > 0 else {
+                errorMessage = L10n.text("Enter a valid NTD amount and rate for an exchange.", language: appLanguage)
+                return
+            }
+            parsedNTD = exchangeNTD
+        } else {
+            parsedNTD = nil
+            parsedRate = nil
+        }
+
+        do {
+            try appModel.createForeignCurrencyTransaction(
+                purpose: transactionType == "exchange"
+                    ? (exchangeDirection == "buy" ? "Exchange in" : "Exchange out")
+                    : trimmedPurpose,
+                currency: currency,
+                foreignAmount: foreignValue,
+                ntdAmount: parsedNTD,
+                rate: parsedRate,
+                tradeDate: Self.dateFormatter.string(from: tradeDate)
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 private struct AddForeignCurrencySheet: View {
@@ -1948,7 +2213,8 @@ struct PortfolioView: View {
                         portfolioTotals.pricedHoldings > 0 ? "NTD converted" : "No market prices",
                         language: appLanguage
                     ),
-                    tint: performanceColor(isNegative: portfolioTotals.totalPLNTD < 0, mode: performanceColorMode)
+                    tint: performanceColor(isNegative: portfolioTotals.totalPLNTD < 0, mode: performanceColorMode),
+                    height: 100
                 )
                 PortfolioMetricCard(
                     title: "TODAY",
@@ -1956,16 +2222,23 @@ struct PortfolioView: View {
                     detail: appModel.todayPLNTD == nil
                         ? L10n.text("No market prices", language: appLanguage)
                         : L10n.text("vs previous close", language: appLanguage),
-                    tint: appModel.todayPLNTD.map { performanceColor(isNegative: $0 < 0, mode: performanceColorMode) } ?? .primary
+                    tint: appModel.todayPLNTD.map { performanceColor(isNegative: $0 < 0, mode: performanceColorMode) } ?? .primary,
+                    height: 100
                 )
                 PortfolioMetricCard(
                     title: "MARKET VALUE",
                     value: portfolioTotals.pricedHoldings > 0 ? ntd(portfolioTotals.marketValueNTD) : "—",
                     detail: "\(displayedHoldings.count) \(L10n.text("holdings", language: appLanguage))",
-                    tint: .primary
+                    tint: .primary,
+                    height: 100
                 )
             }
             .padding(.horizontal, 24)
+
+            Rectangle()
+                .fill(Color.secondary.opacity(0.28))
+                .frame(height: 1)
+                .padding(.horizontal, 24)
 
             ScrollView {
                 VStack(spacing: 16) {
@@ -2062,7 +2335,7 @@ struct PortfolioMetricCard: View {
     let height: CGFloat
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
-    init(title: String, value: String, detail: String, tint: Color, height: CGFloat = 132) {
+    init(title: String, value: String, detail: String, tint: Color, height: CGFloat = 100) {
         self.title = title
         self.value = value
         self.detail = detail
@@ -2074,10 +2347,11 @@ struct PortfolioMetricCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L10n.text(title, language: appLanguage)).font(.caption.weight(.bold)).foregroundStyle(.secondary)
             Text(value).font(.title2.weight(.bold)).foregroundStyle(tint)
-            Text(detail).font(.caption).foregroundStyle(tint == .primary ? .secondary : tint)
+            Text(L10n.text(detail, language: appLanguage)).font(.caption).foregroundStyle(tint == .primary ? .secondary : tint)
         }
-        .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .topLeading)
-        .padding(18)
+        .padding(14)
+        .frame(height: height, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
     }
@@ -3244,9 +3518,9 @@ struct RecurringInvestmentView: View {
 
             if appModel.recurringRecords.isEmpty {
                 ContentUnavailableView(
-                    "No recurring rules",
+                    L10n.text("No recurring rules", language: appLanguage),
                     systemImage: "calendar.badge.clock",
-                    description: Text("Add a rule to plan your recurring investments.")
+                    description: Text(L10n.text("Add a rule to plan your recurring investments.", language: appLanguage))
                 )
             } else {
                 ScrollView {
@@ -3256,6 +3530,7 @@ struct RecurringInvestmentView: View {
                                 selectedPage = rule.securityName
                             } label: {
                                 recurringRuleRow(rule)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -3278,7 +3553,7 @@ struct RecurringInvestmentView: View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(rule.securityName).font(.headline)
-                Text("\(rule.symbol) · " + rule.schedules.map { "\($0.frequency) day \($0.executionDay)" }.joined(separator: " · "))
+                Text("\(rule.symbol) · " + rule.schedules.map { "\(L10n.text($0.frequency, language: appLanguage)) \($0.executionDay)\(L10n.text("day", language: appLanguage))" }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -3288,8 +3563,10 @@ struct RecurringInvestmentView: View {
                 Text(L10n.text("Click to view investments", language: appLanguage)).font(.caption).foregroundStyle(.secondary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
+        .contentShape(Rectangle())
     }
 }
 
@@ -3311,7 +3588,7 @@ struct RecurringHoldingDetailView: View {
                 PortfolioMetricCard(
                     title: "TOTAL CONTRIBUTED",
                     value: purchases.isEmpty ? "—" : money(totalAmount, currency: rule.currency),
-                    detail: "\(purchases.count) purchases",
+                    detail: "\(purchases.count) \(L10n.text("purchases", language: appLanguage))",
                     tint: .primary
                 )
                 PortfolioMetricCard(
@@ -3323,7 +3600,7 @@ struct RecurringHoldingDetailView: View {
                 PortfolioMetricCard(
                     title: "LAST PURCHASE",
                     value: lastPurchaseDate,
-                    detail: rule.frequency,
+                    detail: L10n.text(rule.frequency, language: appLanguage),
                     tint: .primary
                 )
             }
@@ -3334,10 +3611,10 @@ struct RecurringHoldingDetailView: View {
                 .padding(.vertical, 4)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("SCHEDULES").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                Text(L10n.text("SCHEDULES", language: appLanguage)).font(.caption.weight(.bold)).foregroundStyle(.secondary)
                 ForEach(rule.schedules) { schedule in
                     HStack {
-                        Text("\(money(schedule.plannedAmount, currency: schedule.currency)) · \(schedule.frequency) · day \(schedule.executionDay)")
+                        Text("\(money(schedule.plannedAmount, currency: schedule.currency)) · \(L10n.text(schedule.frequency, language: appLanguage)) · \(schedule.executionDay)\(L10n.text("day", language: appLanguage))")
                         Spacer()
                         Button {
                             editingSchedule = schedule
@@ -3354,7 +3631,7 @@ struct RecurringHoldingDetailView: View {
 
             VStack(spacing: 0) {
                 HStack {
-                    Text("PURCHASES").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                    Text(L10n.text("PURCHASES", language: appLanguage)).font(.caption.weight(.bold)).foregroundStyle(.secondary)
                     Spacer()
                     Button(action: { showingAddPurchase = true }) {
                         Image(systemName: "plus")
@@ -3368,7 +3645,7 @@ struct RecurringHoldingDetailView: View {
 
                 HStack {
                     Text(L10n.text("DATE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
-                    Text(L10n.text("shares", language: appLanguage)).frame(width: 120, alignment: .trailing)
+                    Text(L10n.text("SHARES", language: appLanguage)).frame(width: 120, alignment: .trailing)
                     Text(L10n.text("AMOUNT", language: appLanguage)).frame(width: 140, alignment: .trailing)
                 }
                 .font(.caption.weight(.bold))
@@ -3379,7 +3656,7 @@ struct RecurringHoldingDetailView: View {
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 0) {
                         if purchases.isEmpty {
-                            Text("No purchases recorded. Click + to add the actual transaction.")
+                            Text(L10n.text("No purchases recorded. Click + to add the actual transaction.", language: appLanguage))
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, minHeight: 160)
                         } else {
