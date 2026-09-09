@@ -1,5 +1,6 @@
 import AppKit
 import Charts
+import Darwin
 import Foundation
 import SwiftUI
 
@@ -678,9 +679,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var databaseManager: DatabaseManager?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if CommandLine.arguments.contains("--fintrack-snapshot") {
+            SnapshotBackgroundAgent.run()
+            NSApp.terminate(nil)
+            return
+        }
+
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         initializeDatabase()
+        SnapshotScheduler.install()
         configureWindows()
     }
 
@@ -696,6 +704,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for window in NSApp.windows {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
+        }
+    }
+}
+
+private enum SnapshotBackgroundAgent {
+    static func run() {
+        do {
+            let databaseManager = try DatabaseManager()
+            let formatter = DateFormatter()
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM-dd"
+            try databaseManager.saveSnapshot(
+                date: formatter.string(from: Date()),
+                assets: try databaseManager.assetTotals(),
+                liabilities: try databaseManager.liabilityTotals()
+            )
+        } catch {
+            NSLog("FinTrack background snapshot failed: %@", error.localizedDescription)
+        }
+    }
+}
+
+private enum SnapshotScheduler {
+    private static let label = "com.fintrack.snapshot"
+
+    private static var launchAgentURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+            .appendingPathComponent("\(label).plist")
+    }
+
+    static func install() {
+        guard let executablePath = Bundle.main.executablePath else { return }
+        let configuredTime = UserDefaults.standard.string(forKey: "snapshotTime") ?? "23:00"
+        let components = configuredTime.split(separator: ":").compactMap { Int($0) }
+        guard components.count == 2,
+              (0...23).contains(components[0]),
+              (0...59).contains(components[1]) else { return }
+
+        let launchAgent: [String: Any] = [
+            "Label": label,
+            "ProgramArguments": [executablePath, "--fintrack-snapshot"],
+            "StartCalendarInterval": [
+                "Hour": components[0],
+                "Minute": components[1]
+            ],
+            "ProcessType": "Background",
+            "RunAtLoad": false
+        ]
+
+        do {
+            let directoryURL = launchAgentURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            let data = try PropertyListSerialization.data(
+                fromPropertyList: launchAgent,
+                format: .xml,
+                options: 0
+            )
+            try data.write(to: launchAgentURL, options: .atomic)
+
+            let domain = "gui/\(getuid())"
+            runLaunchctl(["bootout", domain, launchAgentURL.path])
+            runLaunchctl(["bootstrap", domain, launchAgentURL.path])
+        } catch {
+            NSLog("FinTrack snapshot scheduler setup failed: %@", error.localizedDescription)
+        }
+    }
+
+    private static func runLaunchctl(_ arguments: [String]) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = arguments
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            NSLog("FinTrack launchctl failed: %@", error.localizedDescription)
         }
     }
 }
@@ -1407,7 +1493,10 @@ struct ForeignCurrencyView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
         .task {
             await appModel.refreshForeignExchangeRates()
@@ -1482,13 +1571,13 @@ struct ForeignCurrencyView: View {
             .padding(.top, 18)
             .padding(.bottom, 14)
 
-            HStack(spacing: 20) {
-                Text(L10n.text("PURPOSE", language: appLanguage)).frame(width: 180, alignment: .leading)
-                Text(L10n.text("CURRENCY", language: appLanguage)).frame(width: 76, alignment: .leading)
-                Text(L10n.text("FOREIGN AMOUNT", language: appLanguage)).frame(width: 105, alignment: .trailing)
-                Text(L10n.text("NTD", language: appLanguage)).frame(width: 82, alignment: .trailing)
-                Text(L10n.text("RATE", language: appLanguage)).frame(width: 88, alignment: .trailing)
-                Text(L10n.text("DATE", language: appLanguage)).frame(width: 100, alignment: .trailing)
+            LazyVGrid(columns: transactionGridColumns, alignment: .leading, spacing: 0) {
+                Text(L10n.text("PURPOSE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
+                Text(L10n.text("CURRENCY", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
+                Text(L10n.text("FOREIGN AMOUNT", language: appLanguage)).frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L10n.text("NTD", language: appLanguage)).frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L10n.text("RATE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L10n.text("DATE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .trailing)
             }
             .font(.caption.weight(.bold))
             .foregroundStyle(FinTrackTheme.textSecondary)
@@ -1501,16 +1590,21 @@ struct ForeignCurrencyView: View {
                     .frame(maxWidth: .infinity, minHeight: 140)
             } else {
                 ForEach(appModel.foreignCurrencyTransactions) { transaction in
-                    HStack(spacing: 20) {
-                        Text(transaction.purpose).lineLimit(1).frame(width: 180, alignment: .leading)
-                        Text(transaction.currency).frame(width: 76, alignment: .leading)
+                    LazyVGrid(columns: transactionGridColumns, alignment: .leading, spacing: 0) {
+                        Text(transaction.purpose)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(transaction.currency)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Text(money(transaction.foreignAmount, currency: transaction.currency))
                             .foregroundStyle(transaction.foreignAmount < 0 ? FinTrackTheme.negative : FinTrackTheme.textPrimary)
-                            .frame(width: 105, alignment: .trailing)
-                        Text(transaction.ntdAmount.map(ntd) ?? "—").frame(width: 82, alignment: .trailing)
-                        Text(transaction.rate.map { String(format: "NTD %.4f", $0) } ?? "—").frame(width: 88, alignment: .trailing)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        Text(transaction.ntdAmount.map(ntd) ?? "—")
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        Text(transaction.rate.map { String(format: "NTD %.4f", $0) } ?? "—")
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                         Text(transaction.tradeDate)
-                            .frame(width: 100, alignment: .trailing)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding(.horizontal, 40)
                     .padding(.vertical, 14)
@@ -1525,6 +1619,17 @@ struct ForeignCurrencyView: View {
         }
         .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
+    }
+
+    private var transactionGridColumns: [GridItem] {
+        [
+            GridItem(.flexible(minimum: 120), alignment: .leading),
+            GridItem(.flexible(minimum: 72), alignment: .leading),
+            GridItem(.flexible(minimum: 110), alignment: .trailing),
+            GridItem(.flexible(minimum: 80), alignment: .trailing),
+            GridItem(.flexible(minimum: 96), alignment: .trailing),
+            GridItem(.flexible(minimum: 105), alignment: .trailing)
+        ]
     }
 }
 
@@ -4036,6 +4141,9 @@ struct SettingsCard: View {
             .pickerStyle(.menu)
             .foregroundStyle(FinTrackTheme.textPrimary)
             .tint(FinTrackTheme.textPrimary)
+            .onChange(of: snapshotTime) { _, _ in
+                SnapshotScheduler.install()
+            }
 
             Picker(L10n.text("Appearance", language: appLanguage), selection: $appearanceMode) {
                 Text(L10n.text("System", language: appLanguage)).tag("system")
@@ -4552,6 +4660,7 @@ struct RecurringHoldingDetailView: View {
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .id(rule.holdingID)
         .task(id: rule.holdingID) {
             purchases = appModel.recurringPurchases(holdingID: rule.holdingID)
