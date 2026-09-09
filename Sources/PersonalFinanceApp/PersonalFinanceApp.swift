@@ -655,6 +655,23 @@ enum AppLanguage: String {
     case traditionalChinese = "zh-Hant"
 }
 
+private enum FinTrackTheme {
+    static let appBackground = Color(red: 0x29 / 255.0, green: 0x2C / 255.0, blue: 0x2C / 255.0)
+    static let sidebarBackground = Color(red: 0x25 / 255.0, green: 0x28 / 255.0, blue: 0x28 / 255.0)
+    static let cardBackground = Color(red: 0x30 / 255.0, green: 0x33 / 255.0, blue: 0x33 / 255.0)
+    static let surfaceHover = Color(red: 0x37 / 255.0, green: 0x3B / 255.0, blue: 0x3A / 255.0)
+    static let border = Color(red: 0x48 / 255.0, green: 0x4C / 255.0, blue: 0x4B / 255.0)
+    static let textPrimary = Color(red: 0xE7 / 255.0, green: 0xE5 / 255.0, blue: 0xE0 / 255.0)
+    static let textSecondary = Color(red: 0xAA / 255.0, green: 0xA9 / 255.0, blue: 0xA4 / 255.0)
+    static let textMuted = Color(red: 0x85 / 255.0, green: 0x87 / 255.0, blue: 0x83 / 255.0)
+    static let primary = Color(red: 0x78 / 255.0, green: 0x95 / 255.0, blue: 0xA5 / 255.0)
+    static let primaryHover = Color(red: 0x8C / 255.0, green: 0xA8 / 255.0, blue: 0xB6 / 255.0)
+    static let positive = Color(red: 0x7F / 255.0, green: 0xA6 / 255.0, blue: 0x8A / 255.0)
+    static let negative = Color(red: 0xB7 / 255.0, green: 0x7D / 255.0, blue: 0x78 / 255.0)
+    static let warning = Color(red: 0xC0 / 255.0, green: 0xA3 / 255.0, blue: 0x6E / 255.0)
+    static let info = primary
+}
+
 enum L10n {
     private static let traditionalChinese: [String: String] = [
         "Overview": "總覽", "Income Statement": "損益表", "Portfolio": "投資組合", "Dividends": "股利",
@@ -741,6 +758,8 @@ struct DashboardView: View {
             }
         }
         .frame(minWidth: 980, minHeight: 680)
+        .foregroundStyle(FinTrackTheme.textPrimary)
+        .tint(FinTrackTheme.primary)
         .preferredColorScheme(preferredColorScheme)
         .onAppear {
             hideWindowTitle()
@@ -787,6 +806,8 @@ struct SidebarView: View {
 
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(FinTrackTheme.sidebarBackground)
         .safeAreaInset(edge: .top) {
             HStack {
                 Text("FinTrack")
@@ -805,7 +826,7 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .background(.bar)
+            .background(FinTrackTheme.sidebarBackground)
         }
     }
 
@@ -820,7 +841,7 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .font(selectedPage == title ? .headline.weight(.semibold) : .body)
-        .foregroundStyle(selectedPage == title ? Color.accentColor : .primary)
+        .foregroundStyle(selectedPage == title ? FinTrackTheme.primary : FinTrackTheme.textPrimary)
         .padding(.leading, isChild ? 22 : 0)
         .scaleEffect(selectedPage == title ? 1.04 : 1, anchor: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -839,7 +860,7 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .font(selectedPage == title ? .headline.weight(.semibold) : .body)
-        .foregroundStyle(selectedPage == title ? Color.accentColor : .primary)
+        .foregroundStyle(selectedPage == title ? FinTrackTheme.primary : FinTrackTheme.textPrimary)
         .scaleEffect(selectedPage == title ? 1.04 : 1, anchor: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -864,9 +885,9 @@ struct SidebarIconButton: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .frame(width: 28, height: 28)
-                .foregroundStyle(isSelected ? .white : .primary)
+                .foregroundStyle(isSelected ? FinTrackTheme.textPrimary : FinTrackTheme.textSecondary)
                 .background(
-                    isSelected ? Color.accentColor : Color.clear,
+                    isSelected ? FinTrackTheme.primary : Color.clear,
                     in: RoundedRectangle(cornerRadius: 8)
                 )
         }
@@ -913,7 +934,7 @@ struct DashboardContentView: View {
                 OverviewView(showChanges: showDetailChanges)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(FinTrackTheme.appBackground)
         .onAppear {
             if !showDetailChangesInitialized {
                 showDetailChanges = false
@@ -973,7 +994,7 @@ struct ForeignCurrencyView: View {
                 }
 
                 Rectangle()
-                    .fill(Color.secondary.opacity(0.28))
+                    .fill(FinTrackTheme.border)
                     .frame(height: 1)
                     .padding(.vertical, 4)
 
@@ -1035,8 +1056,8 @@ struct ForeignCurrencyView: View {
                         }
                     }
                 }
-                .background(.background, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+                .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
 
                 foreignTransactionCard
             }
@@ -1118,7 +1139,7 @@ struct ForeignCurrencyView: View {
                         Text(transaction.purpose).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                         Text(transaction.currency).frame(width: 70, alignment: .leading)
                         Text(money(transaction.foreignAmount, currency: transaction.currency))
-                            .foregroundStyle(transaction.foreignAmount < 0 ? .red : .primary)
+                            .foregroundStyle(transaction.foreignAmount < 0 ? FinTrackTheme.negative : FinTrackTheme.textPrimary)
                             .frame(width: 120, alignment: .trailing)
                         Text(transaction.ntdAmount.map(ntd) ?? "—")
                             .frame(width: 90, alignment: .trailing)
@@ -1138,8 +1159,8 @@ struct ForeignCurrencyView: View {
                 }
             }
         }
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 }
 
@@ -1368,7 +1389,7 @@ struct OverviewView: View {
             .padding(.horizontal, 24)
 
             Rectangle()
-                .fill(Color.secondary.opacity(0.28))
+                .fill(FinTrackTheme.border)
                 .frame(height: 1)
                 .padding(.horizontal, 24)
 
@@ -1510,9 +1531,9 @@ private func signedNTD(_ value: Double) -> String {
 
 private func performanceColor(isNegative: Bool, mode: String) -> Color {
     switch mode {
-    case "redUp": return isNegative ? .green : .red
-    case "analog": return isNegative ? .orange : .blue
-    default: return isNegative ? .red : .green
+    case "redUp": return isNegative ? FinTrackTheme.positive : FinTrackTheme.negative
+    case "analog": return isNegative ? FinTrackTheme.warning : FinTrackTheme.info
+    default: return isNegative ? FinTrackTheme.negative : FinTrackTheme.positive
     }
 }
 
@@ -2236,7 +2257,7 @@ struct PortfolioView: View {
             .padding(.horizontal, 24)
 
             Rectangle()
-                .fill(Color.secondary.opacity(0.28))
+                .fill(FinTrackTheme.border)
                 .frame(height: 1)
                 .padding(.horizontal, 24)
 
@@ -2352,8 +2373,8 @@ struct PortfolioMetricCard: View {
         .padding(14)
         .frame(height: height, alignment: .topLeading)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 }
 
@@ -2420,8 +2441,8 @@ struct PositionsCard: View {
             }
             .frame(maxHeight: 480)
         }
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 
     private func positionRow(_ holding: PortfolioHolding) -> some View {
@@ -2520,8 +2541,8 @@ struct DividendManagementView: View {
                 }
                 .frame(maxHeight: 520)
             }
-            .background(.background, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+            .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
@@ -2776,8 +2797,8 @@ struct AllocationCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 
     private func allocationFraction(_ record: DatabaseManager.AllocationRecord, total: Double) -> CGFloat {
@@ -2813,11 +2834,11 @@ struct AllocationCard: View {
 
     private func allocationColor(_ index: Int) -> Color {
         [
-            Color(red: 0.05, green: 0.34, blue: 0.34),
-            Color(red: 0.06, green: 0.24, blue: 0.42),
-            Color(red: 0.30, green: 0.12, blue: 0.38),
-            Color(red: 0.48, green: 0.24, blue: 0.08),
-            Color(red: 0.45, green: 0.08, blue: 0.18)
+            Color(red: 0x60 / 255.0, green: 0x6C / 255.0, blue: 0x38 / 255.0),
+            Color(red: 0x28 / 255.0, green: 0x36 / 255.0, blue: 0x18 / 255.0),
+            Color(red: 0xFE / 255.0, green: 0xFA / 255.0, blue: 0xE0 / 255.0),
+            Color(red: 0xDD / 255.0, green: 0xA1 / 255.0, blue: 0x5E / 255.0),
+            Color(red: 0xBC / 255.0, green: 0x6C / 255.0, blue: 0x25 / 255.0)
         ][index % 5]
     }
 }
@@ -2872,8 +2893,8 @@ struct LegacyAllocationCard: View {
             }
         }
         .padding(16)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 
     private func start(for index: Int) -> CGFloat {
@@ -2906,8 +2927,8 @@ struct PortfolioTable: View {
             }
             tableRow(values: ["Total", "", "", "", "", "", "", "", "NT$1,596,724", "NT$667,537", "100.00%", "", ""], isHeader: true)
         }
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 
     private func tableRow(values: [String], isHeader: Bool) -> some View {
@@ -2940,10 +2961,10 @@ struct AllocationChart: View {
         chartPanel(title: "Allocation") {
             ZStack {
                 Circle()
-                    .stroke(Color.blue.opacity(0.8), style: StrokeStyle(lineWidth: 42, lineCap: .butt))
+                    .stroke(FinTrackTheme.primary.opacity(0.8), style: StrokeStyle(lineWidth: 42, lineCap: .butt))
                 Circle()
                     .trim(from: 0, to: 0.34)
-                    .stroke(Color.cyan, style: StrokeStyle(lineWidth: 42, lineCap: .butt))
+                    .stroke(FinTrackTheme.info, style: StrokeStyle(lineWidth: 42, lineCap: .butt))
                     .rotationEffect(.degrees(-90))
                 Text("100%")
                     .font(.headline)
@@ -2962,7 +2983,7 @@ struct ReturnChart: View {
                 ForEach(bars, id: \.0) { bar in
                     VStack(spacing: 6) {
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(bar.1 > 0.5 ? Color.green : Color.blue)
+                            .fill(bar.1 > 0.5 ? FinTrackTheme.positive : FinTrackTheme.primary)
                             .frame(width: 28, height: max(18, bar.1 * 150))
                         Text(bar.0).font(.caption2)
                     }
@@ -2982,8 +3003,8 @@ private func chartPanel<Content: View>(title: String, @ViewBuilder content: () -
     }
     .frame(maxWidth: .infinity, minHeight: 240, alignment: .topLeading)
     .padding(20)
-    .background(.background, in: RoundedRectangle(cornerRadius: 12))
-    .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+    .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+    .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
 }
 
 struct PortfolioHolding: Identifiable {
@@ -3077,8 +3098,8 @@ struct FinancialIndicatorsCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 }
 
@@ -3095,8 +3116,8 @@ struct ChartPlaceholder: View {
         }
         .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 }
 
@@ -3168,7 +3189,7 @@ struct IncomeStatementView: View {
             .padding(.horizontal, 24)
 
             Rectangle()
-                .fill(Color.secondary.opacity(0.28))
+                .fill(FinTrackTheme.border)
                 .frame(height: 1)
                 .padding(.horizontal, 24)
 
@@ -3229,8 +3250,8 @@ private struct IncomeStatementSectionCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 
     private func row(_ item: DatabaseManager.IncomeStatementItem, level: Int) -> AnyView {
@@ -3283,7 +3304,7 @@ private struct AccountAllocationCard: View {
                         }
                         GeometryReader { geometry in
                             Capsule()
-                                .fill((amount < 0 ? Color.red : Color.accentColor).opacity(0.72))
+                                .fill((amount < 0 ? FinTrackTheme.negative : FinTrackTheme.primary).opacity(0.72))
                                 .frame(width: max(6, geometry.size.width * abs(amount) / maximum), height: 8)
                         }
                         .frame(height: 8)
@@ -3293,8 +3314,8 @@ private struct AccountAllocationCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 }
 
@@ -3394,8 +3415,8 @@ struct StatementCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 
     private func statementRow(_ row: StatementRow, indent: CGFloat = 0) -> AnyView {
@@ -3477,8 +3498,8 @@ struct SettingsCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 }
 
@@ -3537,8 +3558,8 @@ struct RecurringInvestmentView: View {
                             .contentShape(Rectangle())
                         }
                     }
-                    .background(.background, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+                    .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
                 }
             }
         }
@@ -3606,7 +3627,7 @@ struct RecurringHoldingDetailView: View {
             }
 
             Rectangle()
-                .fill(Color.secondary.opacity(0.28))
+                .fill(FinTrackTheme.border)
                 .frame(height: 1)
                 .padding(.vertical, 4)
 
@@ -3626,8 +3647,8 @@ struct RecurringHoldingDetailView: View {
                 }
             }
             .padding(14)
-            .background(.background, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+            .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
 
             VStack(spacing: 0) {
                 HStack {
@@ -3675,8 +3696,8 @@ struct RecurringHoldingDetailView: View {
                 }
                 .frame(maxHeight: 420)
             }
-            .background(.background, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+            .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
@@ -3897,18 +3918,18 @@ struct MetricCard: View {
                 Text(L10n.text(title, language: appLanguage)).foregroundStyle(.secondary)
                 if warning {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(FinTrackTheme.warning)
                         .accessibilityLabel("Warning")
                 }
             }
-            Text(value).font(.title2.weight(.bold)).foregroundStyle(warning ? .red : .primary)
+            Text(value).font(.title2.weight(.bold)).foregroundStyle(warning ? FinTrackTheme.negative : FinTrackTheme.textPrimary)
             Text(change.replacingOccurrences(of: " vs last month", with: appLanguage == AppLanguage.traditionalChinese.rawValue ? " 較上月" : " vs last month"))
-                .font(.caption).foregroundStyle(warning || change.hasPrefix("-") ? .red : .green)
+                .font(.caption).foregroundStyle(warning || change.hasPrefix("-") ? FinTrackTheme.negative : FinTrackTheme.positive)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 }
 
@@ -3958,8 +3979,8 @@ struct DetailCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 
     private func detailRow(name: String, value: String, change: String, showChange: Bool) -> some View {
