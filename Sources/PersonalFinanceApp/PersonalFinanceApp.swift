@@ -4548,6 +4548,7 @@ struct RecurringHoldingDetailView: View {
             }
             .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
+            .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
