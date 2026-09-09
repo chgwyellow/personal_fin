@@ -15,7 +15,7 @@ struct PersonalFinanceApp: App {
                 .environmentObject(appModel)
         }
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
+        .windowResizability(.automatic)
     }
 }
 
@@ -975,7 +975,7 @@ enum L10n {
         "Recurring Investment": "定期定額", "Recurring Rules": "定期定額規則", "Click to view investments": "點擊查看投資紀錄", "Foreign Currency": "外幣", "Stock": "股票",
         "Total NTD Equivalent": "新台幣等價總額", "Currencies Held": "持有幣別", "Rates Updated": "匯率更新", "Latest Rate": "最新匯率",
         "live exchange rates": "即時匯率", "ExchangeRate-API": "ExchangeRate-API", "converted from foreign-currency balances": "由外幣餘額換算",
-        "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價", "CURRENCY": "幣別", "SECURITY": "標的", "DATE": "日期", "AMOUNT": "金額", "TRANSACTIONS": "交易紀錄", "PURPOSE": "用途", "FOREIGN AMOUNT": "原幣", "NTD": "新台幣", "SHARES": "股數",
+        "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價", "CURRENCY": "幣別", "SECURITY": "標的", "DATE": "日期", "AMOUNT": "金額", "TRANSACTIONS": "交易紀錄", "PURPOSE": "用途", "FOREIGN": "原幣", "NTD": "新台幣", "SHARES": "股數",
         "Add foreign-currency transaction": "新增外幣交易", "Transaction type": "交易類型", "Exchange": "換匯", "Exchange direction": "換匯方向", "Buy foreign currency": "買入外幣", "Sell foreign currency back to NTD": "賣出外幣換回新台幣", "Other purpose": "其他用途", "Original currency": "原幣別", "Foreign amount": "原幣金額", "Foreign amount (+ income / - expense)": "原幣金額（收入＋／支出－）", "NTD amount": "新台幣金額", "Rate (NTD per unit)": "匯率（每單位新台幣）", "NTD amount (exchange only)": "新台幣金額（僅換匯）", "Rate (NTD per unit, exchange only)": "匯率（每單位新台幣，僅換匯）", "Purpose": "用途", "Date": "日期", "Exchange transactions require NTD amount and rate.": "換匯交易需要填寫新台幣金額與匯率。", "Other transactions only change the foreign-currency balance; NTD amount and rate are not required.": "其他交易只會變更外幣餘額，不需要填寫新台幣金額與匯率。", "Enter a currency and positive foreign amount.": "請輸入幣別與正的原幣金額。", "Enter a purpose, currency, and positive foreign amount.": "請輸入用途、幣別與正的原幣金額。", "Enter a valid NTD amount and rate for an exchange.": "請輸入有效的新台幣金額與匯率。", "Use a negative foreign amount for investments, spending, or exchanging foreign currency back to NTD. Leave NTD and rate blank for non-exchange transactions.": "投資、支出或換回新台幣時，原幣金額請填負值；非換匯交易的新台幣與匯率請留空。", "Enter a purpose, currency, and non-zero foreign amount.": "請輸入用途、幣別與非零的原幣金額。", "Enter both NTD amount and rate, or leave both blank.": "請同時輸入新台幣金額與匯率，或兩者都留空。", "NTD amount and rate must be greater than zero.": "新台幣金額與匯率必須大於零。",
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
         "No recurring investments": "目前沒有定期定額", "No recurring rules": "目前沒有定期定額規則", "Add a rule to plan your recurring investments.": "新增規則以規劃定期定額投資。",
@@ -1042,7 +1042,7 @@ struct DashboardView: View {
     var body: some View {
         NavigationSplitView {
             SidebarView(selectedPage: $selectedPage)
-                .navigationSplitViewColumnWidth(240)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 240, max: 240)
         } detail: {
             ZStack(alignment: .topTrailing) {
                 DashboardContentView(
@@ -1060,11 +1060,13 @@ struct DashboardView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Help")
-                    .padding(.top, 14)
-                    .padding(.trailing, 20)
+                .padding(.top, 14)
+                .padding(.trailing, 20)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
             .background(FinTrackTheme.appBackground.ignoresSafeArea())
         }
+        .navigationSplitViewStyle(.prominentDetail)
         .frame(minWidth: 980, minHeight: 680)
         .background(FinTrackTheme.appBackground.ignoresSafeArea())
         .foregroundStyle(FinTrackTheme.textPrimary)
@@ -1272,7 +1274,10 @@ struct DashboardContentView: View {
             } else if pageTitle == "Foreign Currency" {
                 ForeignCurrencyView()
             } else if let recurring = appModel.recurringRecords.first(where: { $0.securityName == pageTitle }) {
-                RecurringHoldingDetailView(rule: recurring)
+                ScrollView {
+                    RecurringHoldingDetailView(rule: recurring)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if pageTitle == "Income Statement" {
                 IncomeStatementView()
             } else if pageTitle == "Settings" {
@@ -1289,6 +1294,7 @@ struct DashboardContentView: View {
             }
         }
         .background(FinTrackTheme.appBackground)
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             if !showDetailChangesInitialized {
                 showDetailChanges = false
@@ -1384,21 +1390,13 @@ struct ForeignCurrencyView: View {
         let currencyCount = summaries.count
 
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                    PortfolioMetricCard(
-                        title: "Total NTD Equivalent",
-                        value: ntd(totalNTD),
-                        detail: L10n.text("converted from foreign-currency balances", language: appLanguage),
-                        tint: .primary,
-                        height: 100
-                    )
-                    PortfolioMetricCard(
-                        title: "Currencies Held",
-                        value: "\(currencyCount)",
-                        detail: L10n.text(currencyCount == 1 ? "currency" : "currencies", language: appLanguage),
-                        tint: .primary,
-                        height: 100
-                    )
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 16) {
+                    foreignMetricCards(totalNTD: totalNTD, currencyCount: currencyCount)
+                }
+                VStack(alignment: .leading, spacing: 16) {
+                    foreignMetricCards(totalNTD: totalNTD, currencyCount: currencyCount)
+                }
             }
             .padding(.horizontal, 24)
 
@@ -1472,7 +1470,7 @@ struct ForeignCurrencyView: View {
                                     .frame(width: 170, alignment: .trailing)
                             }
                             .padding(.horizontal, 40)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 8)
                             .contentShape(Rectangle())
                             .contextMenu {
                                 Button("Edit") {
@@ -1493,10 +1491,8 @@ struct ForeignCurrencyView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipped()
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
         }
         .task {
             await appModel.refreshForeignExchangeRates()
@@ -1574,7 +1570,7 @@ struct ForeignCurrencyView: View {
             LazyVGrid(columns: transactionGridColumns, alignment: .leading, spacing: 0) {
                 Text(L10n.text("PURPOSE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
                 Text(L10n.text("CURRENCY", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
-                Text(L10n.text("FOREIGN AMOUNT", language: appLanguage)).frame(maxWidth: .infinity, alignment: .trailing)
+                Text(L10n.text("FOREIGN", language: appLanguage)).frame(maxWidth: .infinity, alignment: .trailing)
                 Text(L10n.text("NTD", language: appLanguage)).frame(maxWidth: .infinity, alignment: .trailing)
                 Text(L10n.text("RATE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .trailing)
                 Text(L10n.text("DATE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .trailing)
@@ -1607,7 +1603,7 @@ struct ForeignCurrencyView: View {
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding(.horizontal, 40)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 8)
                     .contentShape(Rectangle())
                     .contextMenu {
                         Button(L10n.text("Delete", language: appLanguage), role: .destructive) {
@@ -1623,13 +1619,31 @@ struct ForeignCurrencyView: View {
 
     private var transactionGridColumns: [GridItem] {
         [
-            GridItem(.flexible(minimum: 120), alignment: .leading),
-            GridItem(.flexible(minimum: 72), alignment: .leading),
-            GridItem(.flexible(minimum: 110), alignment: .trailing),
-            GridItem(.flexible(minimum: 80), alignment: .trailing),
-            GridItem(.flexible(minimum: 96), alignment: .trailing),
-            GridItem(.flexible(minimum: 105), alignment: .trailing)
+            GridItem(.flexible(minimum: 140), alignment: .leading),
+            GridItem(.fixed(60), alignment: .leading),
+            GridItem(.fixed(110), alignment: .trailing),
+            GridItem(.fixed(72), alignment: .trailing),
+            GridItem(.fixed(88), alignment: .trailing),
+            GridItem(.fixed(100), alignment: .trailing)
         ]
+    }
+
+    @ViewBuilder
+    private func foreignMetricCards(totalNTD: Double, currencyCount: Int) -> some View {
+        PortfolioMetricCard(
+            title: "Total NTD Equivalent",
+            value: ntd(totalNTD),
+            detail: L10n.text("converted from foreign-currency balances", language: appLanguage),
+            tint: .primary,
+            height: 100
+        )
+        PortfolioMetricCard(
+            title: "Currencies Held",
+            value: "\(currencyCount)",
+            detail: L10n.text(currencyCount == 1 ? "currency" : "currencies", language: appLanguage),
+            tint: .primary,
+            height: 100
+        )
     }
 }
 
@@ -2041,6 +2055,21 @@ private func money(_ value: Double, currency: String) -> String {
     formatter.minimumFractionDigits = isNTD ? 0 : 2
     formatter.maximumFractionDigits = isNTD ? 0 : 2
     return "\(prefix)\(formatter.string(from: NSNumber(value: value)) ?? (isNTD ? "0" : "0.00"))"
+}
+
+private func lastPriceMoney(_ value: Double, currency: String) -> String {
+    let prefix: String
+    switch currency {
+    case "USD": prefix = "$"
+    case "JPY": prefix = "¥"
+    case "NTD", "TWD": prefix = "NTD "
+    default: prefix = "\(currency) "
+    }
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.minimumFractionDigits = 2
+    formatter.maximumFractionDigits = 2
+    return "\(prefix)\(formatter.string(from: NSNumber(value: value)) ?? "0.00")"
 }
 
 private func shares(_ value: Double, market: String) -> String {
@@ -2853,7 +2882,7 @@ struct PortfolioView: View {
         let average = holding.shares > 0
             ? money(holding.totalCost / holding.shares, currency: holding.currency)
             : "—"
-        let price = holding.marketPrice.map { money($0, currency: holding.currency) } ?? "—"
+        let price = holding.marketPrice.map { lastPriceMoney($0, currency: holding.currency) } ?? "—"
         let value = holding.marketValue.map { holdingValueMoney($0, currency: holding.currency, market: holding.market) } ?? "—"
         let profitLoss = holding.capitalGainLoss.map { money($0, currency: holding.currency) } ?? "—"
         let returnRate: String
@@ -3075,15 +3104,20 @@ struct DividendManagementView: View {
                                 .frame(maxWidth: .infinity, minHeight: 180)
                         } else {
                             ForEach(appModel.dividendRecords) { dividend in
-                                HStack {
+                                HStack(alignment: .top) {
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(dividend.securityName).font(.headline)
+                                        Text(dividend.securityName)
+                                            .font(.headline)
+                                            .lineLimit(1)
                                         Text(dividend.symbol).font(.caption).foregroundStyle(.secondary)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    Text(dividend.payDate).frame(width: 130, alignment: .trailing)
+                                    Text(dividend.payDate)
+                                        .frame(width: 130, alignment: .trailing)
+                                        .padding(.top, 2)
                                     Text(money(dividend.amount, currency: dividend.currency))
                                         .frame(width: 140, alignment: .trailing)
+                                        .padding(.top, 2)
                                 }
                                 .padding(.horizontal, 48)
                                 .padding(.vertical, 11)
@@ -4660,7 +4694,7 @@ struct RecurringHoldingDetailView: View {
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .id(rule.holdingID)
         .task(id: rule.holdingID) {
             purchases = appModel.recurringPurchases(holdingID: rule.holdingID)
