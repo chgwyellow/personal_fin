@@ -19,6 +19,7 @@ struct MarketDataClient {
     struct Quote {
         let price: Double
         let currency: String
+        let previousClose: Double?
     }
 
     private struct ChartResponse: Decodable {
@@ -32,6 +33,7 @@ struct MarketDataClient {
         struct Meta: Decodable {
             let regularMarketPrice: Double?
             let currency: String?
+            let regularMarketPreviousClose: Double?
         }
     }
 
@@ -79,7 +81,11 @@ struct MarketDataClient {
         let decoded = try JSONDecoder().decode(ChartResponse.self, from: data)
         guard let meta = decoded.chart.result?.first?.meta,
               let price = meta.regularMarketPrice else { return nil }
-        return Quote(price: price, currency: meta.currency ?? "USD")
+        return Quote(
+            price: price,
+            currency: meta.currency ?? "USD",
+            previousClose: meta.regularMarketPreviousClose
+        )
     }
 
     /// Fetches one exchange rate quoted against Taiwan dollars.

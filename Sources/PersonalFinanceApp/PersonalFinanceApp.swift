@@ -44,6 +44,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var dividendRecords: [DatabaseManager.DividendRecord] = []
     @Published private(set) var foreignExchangeRates: [String: Double] = [:]
     @Published private(set) var foreignExchangeRatesUpdatedAt: Date?
+    @Published private(set) var todayPLNTD: Double?
     private let databaseManager: DatabaseManager?
     private let marketDataClient = MarketDataClient()
 
@@ -264,6 +265,7 @@ final class AppModel: ObservableObject {
         let records = holdingRecords
         let formatter = ISO8601DateFormatter()
         let timestamp = formatter.string(from: Date())
+        var dailyQuotes: [(DatabaseManager.HoldingRecord, MarketDataClient.Quote)] = []
 
         for holding in records {
             do {
@@ -276,6 +278,7 @@ final class AppModel: ObservableObject {
                         observedAt: timestamp,
                         source: "Yahoo Finance"
                     )
+                    dailyQuotes.append((holding, quote))
                 }
             } catch {
                 NSLog("FinTrack price refresh failed for %@: %@", holding.symbol, error.localizedDescription)
@@ -298,10 +301,47 @@ final class AppModel: ObservableObject {
             }
         }
 
+        var todayTotal = 0.0
+        var hasTodayData = false
+        for (holding, quote) in dailyQuotes {
+            guard let previousClose = quote.previousClose else { continue }
+            let rate: Double
+            if holding.currency == "NTD" {
+                rate = 1
+            } else {
+                rate = (try? databaseManager.latestExchangeRate(base: holding.currency, quote: "NTD")) ?? 0
+            }
+            todayTotal += (quote.price - previousClose) * holding.shares * rate
+            hasTodayData = true
+        }
+        todayPLNTD = hasTodayData ? todayTotal : nil
+
         refreshAssets()
         refreshHoldings()
         refreshPortfolioTotals()
         refreshAllocations()
+        saveDailySnapshotIfDue()
+    }
+
+    func saveDailySnapshotIfDue() {
+        guard let databaseManager else { return }
+        let scheduledTime = UserDefaults.standard.string(forKey: "snapshotTime") ?? "23:00"
+        let parts = scheduledTime.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return }
+        let now = Calendar.current.dateComponents([.hour, .minute], from: Date())
+        guard let hour = now.hour, let minute = now.minute,
+              hour > parts[0] || (hour == parts[0] && minute >= parts[1]) else { return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        do {
+            try databaseManager.saveSnapshot(
+                date: formatter.string(from: Date()),
+                assets: assetTotals,
+                liabilities: liabilityTotals
+            )
+        } catch {
+            NSLog("FinTrack snapshot save failed: %@", error.localizedDescription)
+        }
     }
 
     func refreshForeignExchangeRates() async {
@@ -542,7 +582,7 @@ enum L10n {
         "Recurring Investment": "定期定額", "Foreign Currency": "外幣", "Stock": "股票",
         "Total NTD Equivalent": "新台幣等價總額", "Currencies Held": "持有幣別", "Rates Updated": "匯率更新", "Latest Rate": "最新匯率",
         "live exchange rates": "即時匯率", "ExchangeRate-API": "ExchangeRate-API",
-        "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價",
+        "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價", "CURRENCY": "幣別", "SECURITY": "標的", "DATE": "日期", "AMOUNT": "金額",
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
         "No recurring investments": "目前沒有定期定額",
         "No market prices": "尚無市場價格", "NTD converted": "已換算新台幣", "holdings": "筆持股", "shares": "股", "MARKET VALUE": "目前市值",
@@ -558,7 +598,7 @@ enum L10n {
         "Retirement Fund": "勞退基金", "House Deposit": "房屋押金", "Other": "其他",
         "Financial Indicators": "財務指數", "Free Cash Flow": "自由現金流量", "Liability Ratio": "負債比率",
         "Cash Ratio": "現金比率", "Equity Multiplier": "權益乘數", "Net Worth Growth Rate": "淨值成長率",
-        "Net Worth History": "淨值歷史", "Chart area — to be connected to snapshots": "圖表區域 — 將連接資產快照",
+        "Net Worth History": "淨值歷史", "Chart area — to be connected to snapshots": "圖表區域 — 將連接資產快照", "Use the sidebar to switch between your financial sections. Market prices and exchange rates are refreshed when the relevant page is opened.": "使用左側邊欄切換財務區塊；開啟相關頁面時會更新股價與匯率。",
         "Income": "收入", "Expenses": "支出", "Savings": "儲蓄", "Salary": "薪資",
         "Bonus": "獎金", "Side Income": "副業收入", "Base Salary": "本薪", "Overtime": "加班費",
         "Freelance": "接案收入", "Necessary": "必要開銷", "Credit Card": "信用卡", "Daily Expenses": "日常花費",
@@ -566,11 +606,11 @@ enum L10n {
         "Principal": "本金", "Interest": "利息", "Apartment": "房租", "Electricity": "電費",
         "Internet": "網路費", "Food": "餐費", "Transportation": "交通費", "Investment": "投資金",
         "Emergency Fund": "緊急預備金", "Cash Reserve": "現金預留", "Stocks": "股票", "Monthly Reserve": "每月預留",
-        "ETFs": "ETF", "High-yield Savings": "高利活存", "TOTAL P&L": "總損益", "TODAY": "今日",
+        "ETFs": "ETF", "High-yield Savings": "高利活存", "TOTAL P&L": "總損益", "TODAY": "今日", "vs previous close": "相較前一日收盤",
         "INVESTED": "投入成本", "HOLDINGS": "持有資產", "SYMBOL": "標的", "LAST": "現價",
         "CHANGE": "變化", "VALUE": "市值", "P&L": "損益", "ALLOCATION": "資產配置",
         "ASSETS": "資產", "ETFs 57%": "ETF 57%", "Stocks 43%": "股票 43%",
-        "Display": "顯示", "Show detail percentage changes": "顯示明細百分比變化",
+        "Display": "顯示", "Show detail percentage changes": "顯示明細百分比變化", "Performance colors": "漲跌顏色", "Green up / red down": "綠漲紅跌", "Red up / green down": "紅漲綠跌", "Analog mode": "類比模式", "Daily snapshot time": "每日快照時間", "Appearance": "外觀", "System": "跟隨系統", "Light": "淺色", "Dark": "深色",
         "Turn this off to hide month-over-month percentages in asset and liability details.": "關閉後，資產與負債明細將隱藏月增減百分比。",
         "Language": "語言", "English": "英文", "Traditional Chinese": "繁體中文", "Total": "合計",
         "Add Asset": "新增資產", "Asset name": "資產名稱", "Asset Name": "資產名稱",
@@ -590,6 +630,15 @@ enum L10n {
 
 struct DashboardView: View {
     @State private var selectedPage = "Overview"
+    @AppStorage("appearanceMode") private var appearanceMode = "system"
+
+    private var preferredColorScheme: ColorScheme? {
+        switch appearanceMode {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -599,6 +648,17 @@ struct DashboardView: View {
             DashboardContentView(pageTitle: selectedPage, selectedPage: $selectedPage)
         }
         .frame(minWidth: 980, minHeight: 680)
+        .preferredColorScheme(preferredColorScheme)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    selectedPage = "Help"
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .help("Help")
+            }
+        }
         .onAppear {
             hideWindowTitle()
         }
@@ -622,7 +682,6 @@ struct SidebarView: View {
         List(selection: $selectedPage) {
             Section {
                 page("Overview", systemImage: "square.grid.2x2")
-                page("Income Statement", systemImage: "chart.line.uptrend.xyaxis")
                 page("Portfolio", systemImage: "chart.pie")
                 page("Dividends", systemImage: "banknote")
 
@@ -640,6 +699,7 @@ struct SidebarView: View {
                 }
 
                 page("Foreign Currency", systemImage: "globe.americas.fill")
+                page("Income Statement", systemImage: "chart.line.uptrend.xyaxis")
             }
 
         }
@@ -658,14 +718,6 @@ struct SidebarView: View {
                 SidebarIconButton(systemImage: "gearshape", isSelected: selectedPage == "Settings") {
                     selectedPage = "Settings"
                 }
-                SidebarIconButton(systemImage: "questionmark.circle", isSelected: selectedPage == "Help") {
-                    selectedPage = "Help"
-                }
-                Spacer()
-                SidebarIconButton(systemImage: "power", isSelected: false) {
-                    NSApp.terminate(nil)
-                }
-                .keyboardShortcut("q", modifiers: [.command])
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -758,6 +810,8 @@ struct DashboardContentView: View {
                     SettingsCard(showDetailChanges: $showDetailChanges)
                         .padding(24)
                 }
+            } else if pageTitle == "Help" {
+                HelpView()
             } else {
                 OverviewView(showChanges: showDetailChanges)
             }
@@ -790,19 +844,6 @@ struct ForeignCurrencyView: View {
         .sorted { $0.currency < $1.currency }
     }
 
-    private var lastUpdatedText: String {
-        guard let date = appModel.foreignExchangeRatesUpdatedAt else { return "—" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: appLanguage == AppLanguage.traditionalChinese.rawValue ? "zh_TW" : "en_US")
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
-
-    private var latestRateText: String {
-        guard let summary = summaries.first(where: { $0.rate != nil }), let rate = summary.rate else { return "—" }
-        return "NTD " + String(format: "%.4f", rate)
-    }
-
     var body: some View {
         let totalNTD = summaries.reduce(0) { $0 + $1.ntdValue }
         let currencyCount = summaries.count
@@ -821,13 +862,6 @@ struct ForeignCurrencyView: View {
                         title: "Currencies Held",
                         value: "\(currencyCount)",
                         detail: currencyCount == 1 ? "currency" : "currencies",
-                        tint: .primary,
-                        height: 100
-                    )
-                    PortfolioMetricCard(
-                        title: "Latest Rate",
-                        value: latestRateText,
-                        detail: lastUpdatedText == "—" ? "live exchange rates" : "updated \(lastUpdatedText)",
                         tint: .primary,
                         height: 100
                     )
@@ -852,7 +886,7 @@ struct ForeignCurrencyView: View {
                     .padding(.bottom, 10)
 
                     HStack(spacing: 16) {
-                        Text("CURRENCY").frame(maxWidth: .infinity, alignment: .leading)
+                        Text(L10n.text("CURRENCY", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
                         Text(L10n.text("BALANCE", language: appLanguage)).frame(width: 150, alignment: .trailing)
                         Text(L10n.text("RATE", language: appLanguage)).frame(width: 150, alignment: .trailing)
                         Text(L10n.text("NTD VALUE", language: appLanguage)).frame(width: 170, alignment: .trailing)
@@ -1157,6 +1191,14 @@ private func shares(_ value: Double, market: String) -> String {
 
 private func signedNTD(_ value: Double) -> String {
     return value < 0 ? "-\(ntd(abs(value)))" : ntd(value)
+}
+
+private func performanceColor(isNegative: Bool, mode: String) -> Color {
+    switch mode {
+    case "redUp": return isNegative ? .green : .red
+    case "analog": return isNegative ? .orange : .blue
+    default: return isNegative ? .red : .green
+    }
 }
 
 struct AddAssetSheet: View {
@@ -1833,6 +1875,7 @@ struct PortfolioView: View {
     @State private var dividendHolding: DatabaseManager.HoldingRecord?
     @State private var sortAscending = true
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @AppStorage("performanceColorMode") private var performanceColorMode = "greenUp"
 
     var body: some View {
         let displayedHoldings = appModel.holdingRecords
@@ -1855,13 +1898,15 @@ struct PortfolioView: View {
                         portfolioTotals.pricedHoldings > 0 ? "NTD converted" : "No market prices",
                         language: appLanguage
                     ),
-                    tint: portfolioTotals.totalPLNTD >= 0 ? .green : .red
+                    tint: performanceColor(isNegative: portfolioTotals.totalPLNTD < 0, mode: performanceColorMode)
                 )
                 PortfolioMetricCard(
                     title: "TODAY",
-                    value: "—",
-                    detail: L10n.text("No market prices", language: appLanguage),
-                    tint: .primary
+                    value: appModel.todayPLNTD.map(signedNTD) ?? "—",
+                    detail: appModel.todayPLNTD == nil
+                        ? L10n.text("No market prices", language: appLanguage)
+                        : L10n.text("vs previous close", language: appLanguage),
+                    tint: appModel.todayPLNTD.map { performanceColor(isNegative: $0 < 0, mode: performanceColorMode) } ?? .primary
                 )
                 PortfolioMetricCard(
                     title: "MARKET VALUE",
@@ -1919,7 +1964,7 @@ struct PortfolioView: View {
             ? money(holding.totalCost / holding.shares, currency: holding.currency)
             : "—"
         let price = holding.marketPrice.map { money($0, currency: holding.currency) } ?? "—"
-        let value = holding.marketValue.map { money($0, currency: holding.currency) } ?? "—"
+        let value = holding.marketValue.map { holdingValueMoney($0, currency: holding.currency, market: holding.market) } ?? "—"
         let profitLoss = holding.capitalGainLoss.map { money($0, currency: holding.currency) } ?? "—"
         let returnRate: String
         if let gain = holding.capitalGainLoss, holding.totalCost > 0 {
@@ -1945,6 +1990,18 @@ struct PortfolioView: View {
             fx: ""
         )
     }
+}
+
+private func holdingValueMoney(_ value: Double, currency: String, market: String) -> String {
+    let isTaiwan = market.caseInsensitiveCompare("Taiwan") == .orderedSame
+        || market.caseInsensitiveCompare("TW") == .orderedSame
+    guard isTaiwan else { return money(value, currency: currency) }
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.minimumFractionDigits = 0
+    formatter.maximumFractionDigits = 0
+    let prefix = currency == "NTD" ? "NTD " : "\(currency) "
+    return "\(prefix)\(formatter.string(from: NSNumber(value: value)) ?? "0")"
 }
 
 struct PortfolioMetricCard: View {
@@ -1985,6 +2042,7 @@ struct PositionsCard: View {
     let sortAscending: Bool
     let onToggleSort: () -> Void
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @AppStorage("performanceColorMode") private var performanceColorMode = "greenUp"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2058,13 +2116,14 @@ struct PositionsCard: View {
             Text(holding.value).font(.headline)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             VStack(alignment: .trailing, spacing: 3) {
-                Text(holding.totalPL).font(.headline).foregroundStyle(holding.isNegative ? .red : .green)
-                Text(holding.totalRate).font(.caption).foregroundStyle(holding.isNegative ? .red : .green)
+                Text(holding.totalPL).font(.headline).foregroundStyle(performanceColor(isNegative: holding.isNegative, mode: performanceColorMode))
+                Text(holding.totalRate).font(.caption).foregroundStyle(performanceColor(isNegative: holding.isNegative, mode: performanceColorMode))
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 20).padding(.vertical, 8)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1) }
+        .contentShape(Rectangle())
         .contextMenu {
             Button("Edit") { onEdit(holding.id) }
             Button("Add Dividend") { onAddDividend(holding.id) }
@@ -2076,6 +2135,7 @@ struct PositionsCard: View {
 
 struct DividendManagementView: View {
     @EnvironmentObject private var appModel: AppModel
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @State private var showingAdd = false
     @State private var editing: DatabaseManager.DividendRecord?
     @State private var pendingDelete: DatabaseManager.DividendRecord?
@@ -2094,9 +2154,9 @@ struct DividendManagementView: View {
                 .padding(.bottom, 10)
 
                 HStack {
-                    Text("SECURITY").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("DATE").frame(width: 130, alignment: .trailing)
-                    Text("AMOUNT").frame(width: 140, alignment: .trailing)
+                    Text(L10n.text("SECURITY", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(L10n.text("DATE", language: appLanguage)).frame(width: 130, alignment: .trailing)
+                    Text(L10n.text("AMOUNT", language: appLanguage)).frame(width: 140, alignment: .trailing)
                 }
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
@@ -2124,6 +2184,7 @@ struct DividendManagementView: View {
                                 }
                                 .padding(.horizontal, 48)
                                 .padding(.vertical, 11)
+                                .contentShape(Rectangle())
                                 .contextMenu {
                                     Button("Edit") { editing = dividend }
                                     Divider()
@@ -2848,6 +2909,10 @@ struct StatementRow {
 struct SettingsCard: View {
     @Binding var showDetailChanges: Bool
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @AppStorage("performanceColorMode") private var performanceColorMode = "greenUp"
+    @AppStorage("appearanceMode") private var appearanceMode = "system"
+    @AppStorage("snapshotTime") private var snapshotTime = "23:00"
+    @State private var snapshotDate = Date()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -2862,11 +2927,56 @@ struct SettingsCard: View {
                 Text("繁體中文").tag(AppLanguage.traditionalChinese.rawValue)
             }
             .pickerStyle(.menu)
+
+            Picker(L10n.text("Performance colors", language: appLanguage), selection: $performanceColorMode) {
+                Text(L10n.text("Green up / red down", language: appLanguage)).tag("greenUp")
+                Text(L10n.text("Red up / green down", language: appLanguage)).tag("redUp")
+                Text(L10n.text("Analog mode", language: appLanguage)).tag("analog")
+            }
+            .pickerStyle(.menu)
+
+            DatePicker(
+                L10n.text("Daily snapshot time", language: appLanguage),
+                selection: $snapshotDate,
+                displayedComponents: .hourAndMinute
+            )
+            .onChange(of: snapshotDate) { _, date in
+                let formatter = DateFormatter()
+                formatter.dateFormat = "HH:mm"
+                snapshotTime = formatter.string(from: date)
+            }
+
+            Picker(L10n.text("Appearance", language: appLanguage), selection: $appearanceMode) {
+                Text(L10n.text("System", language: appLanguage)).tag("system")
+                Text(L10n.text("Light", language: appLanguage)).tag("light")
+                Text(L10n.text("Dark", language: appLanguage)).tag("dark")
+            }
+            .pickerStyle(.menu)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
         .background(.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+        .onAppear {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            snapshotDate = formatter.date(from: snapshotTime) ?? Date()
+        }
+    }
+}
+
+struct HelpView: View {
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L10n.text("Help", language: appLanguage))
+                .font(.title2.weight(.semibold))
+            Text(L10n.text("Use the sidebar to switch between your financial sections. Market prices and exchange rates are refreshed when the relevant page is opened.", language: appLanguage))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(24)
     }
 }
 
@@ -2904,6 +3014,8 @@ struct RecurringInvestmentView: View {
                                 recurringRuleRow(rule)
                             }
                             .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                     }
                     .background(.background, in: RoundedRectangle(cornerRadius: 12))
@@ -2940,6 +3052,7 @@ struct RecurringInvestmentView: View {
 struct RecurringHoldingDetailView: View {
     let rule: DatabaseManager.RecurringRecord
     @EnvironmentObject private var appModel: AppModel
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @State private var showingAddPurchase = false
     @State private var editingSchedule: DatabaseManager.RecurringSchedule?
     @State private var purchases: [DatabaseManager.RecurringPurchaseRecord] = []
@@ -3010,9 +3123,9 @@ struct RecurringHoldingDetailView: View {
                 .padding(.bottom, 10)
 
                 HStack {
-                    Text("DATE").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("SHARES").frame(width: 120, alignment: .trailing)
-                    Text("AMOUNT").frame(width: 140, alignment: .trailing)
+                    Text(L10n.text("DATE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(L10n.text("shares", language: appLanguage)).frame(width: 120, alignment: .trailing)
+                    Text(L10n.text("AMOUNT", language: appLanguage)).frame(width: 140, alignment: .trailing)
                 }
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
@@ -3297,11 +3410,12 @@ struct DetailCard: View {
                 detailRow(name: section.title, value: section.value, change: section.change, showChange: showChanges)
                     .fontWeight(.semibold)
 
-                ForEach(section.children, id: \.name) { child in
-                    detailRow(name: child.name, value: child.value, change: child.change, showChange: showChanges)
+                    ForEach(section.children, id: \.name) { child in
+                        detailRow(name: child.name, value: child.value, change: child.change, showChange: showChanges)
                         .padding(.leading, 18)
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .contentShape(Rectangle())
                         .contextMenu {
                             if let onEdit = child.onEdit {
                                 Button("Edit", action: onEdit)
