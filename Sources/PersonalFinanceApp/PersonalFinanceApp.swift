@@ -575,7 +575,7 @@ enum L10n {
         "Language": "語言", "English": "英文", "Traditional Chinese": "繁體中文", "Total": "合計",
         "Add Asset": "新增資產", "Asset name": "資產名稱", "Asset Name": "資產名稱",
         "Category": "分類", "Asset group": "資產大分類", "Subcategory": "子分類", "Currency": "幣別", "Amount (NTD)": "金額（新台幣）",
-        "Original amount": "原幣金額", "Initial NTD cost": "初始新台幣成本", "Average exchange rate": "平均匯率",
+        "Original amount": "原幣金額", "Initial NTD cost": "初始新台幣成本", "Current balance cost basis (NTD)": "目前餘額成本基礎（新台幣）", "Average exchange rate": "平均匯率",
         "Only exchange or opening-fund cost is included. Dividends and investment gains are recorded separately.": "只有換匯或初始入金成本會計入；股息與投資收益會獨立記錄。",
         "Cancel": "取消", "Save": "儲存", "Add Liability": "新增負債", "Liability name": "負債名稱",
         "Group": "負債分類", "Balance": "餘額", "Interest rate (optional)": "利率（選填）",
@@ -770,6 +770,8 @@ struct ForeignCurrencyView: View {
     @EnvironmentObject private var appModel: AppModel
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @State private var showingAdd = false
+    @State private var editingAsset: DatabaseManager.AssetRecord?
+    @State private var pendingDelete: ForeignCurrencySummary?
 
     private var summaries: [ForeignCurrencySummary] {
         let grouped = Dictionary(grouping: appModel.assets.filter { $0.currency != "NTD" }, by: \.currency)
@@ -781,7 +783,8 @@ struct ForeignCurrencyView: View {
                 currency: currency,
                 amount: amount,
                 ntdValue: ntdValue,
-                rate: rate ?? (amount > 0 ? ntdValue / amount : nil)
+                rate: rate ?? (amount > 0 ? ntdValue / amount : nil),
+                assetIDs: assets.map(\.id)
             )
         }
         .sorted { $0.currency < $1.currency }
@@ -811,29 +814,23 @@ struct ForeignCurrencyView: View {
                         title: "Total NTD Equivalent",
                         value: ntd(totalNTD),
                         detail: "converted from foreign-currency balances",
-                        tint: .primary
+                        tint: .primary,
+                        height: 100
                     )
                     PortfolioMetricCard(
                         title: "Currencies Held",
                         value: "\(currencyCount)",
                         detail: currencyCount == 1 ? "currency" : "currencies",
-                        tint: .primary
+                        tint: .primary,
+                        height: 100
                     )
                     PortfolioMetricCard(
                         title: "Latest Rate",
                         value: latestRateText,
                         detail: lastUpdatedText == "—" ? "live exchange rates" : "updated \(lastUpdatedText)",
-                        tint: .primary
+                        tint: .primary,
+                        height: 100
                     )
-                }
-
-                HStack {
-                    Spacer()
-                    Button(action: { showingAdd = true }) {
-                        Image(systemName: "plus")
-                    }
-                    .buttonStyle(.plain)
-                    .font(.title3.weight(.semibold))
                 }
 
                 Rectangle()
@@ -842,6 +839,18 @@ struct ForeignCurrencyView: View {
                     .padding(.vertical, 4)
 
                 VStack(spacing: 0) {
+                    HStack {
+                        Spacer()
+                        Button(action: { showingAdd = true }) {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.plain)
+                        .font(.title3.weight(.semibold))
+                    }
+                    .padding(.horizontal, 40)
+                    .padding(.top, 16)
+                    .padding(.bottom, 10)
+
                     HStack(spacing: 16) {
                         Text("CURRENCY").frame(maxWidth: .infinity, alignment: .leading)
                         Text(L10n.text("BALANCE", language: appLanguage)).frame(width: 150, alignment: .trailing)
@@ -851,6 +860,7 @@ struct ForeignCurrencyView: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 40)
+                    .padding(.top, 8)
                     .padding(.bottom, 10)
 
                     if summaries.isEmpty {
@@ -873,6 +883,16 @@ struct ForeignCurrencyView: View {
                             }
                             .padding(.horizontal, 40)
                             .padding(.vertical, 14)
+                            .contentShape(Rectangle())
+                            .contextMenu {
+                                Button("Edit") {
+                                    editingAsset = appModel.assets.first { $0.currency == summary.currency }
+                                }
+                                Divider()
+                                Button("Delete", role: .destructive) {
+                                    pendingDelete = summary
+                                }
+                            }
                         }
                     }
                 }
@@ -887,6 +907,21 @@ struct ForeignCurrencyView: View {
         }
         .sheet(isPresented: $showingAdd) {
             AddForeignCurrencySheet()
+        }
+        .sheet(item: $editingAsset) { asset in
+            EditAssetSheet(asset: asset)
+        }
+        .alert(item: $pendingDelete) { summary in
+            Alert(
+                title: Text("Delete \(summary.currency)?"),
+                message: Text("This will remove the recorded balance for this currency."),
+                primaryButton: .destructive(Text("Delete")) {
+                    for id in summary.assetIDs {
+                        appModel.deleteAsset(id: id)
+                    }
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 }
@@ -908,9 +943,9 @@ private struct AddForeignCurrencySheet: View {
                 .textFieldStyle(.roundedBorder)
             TextField("Current balance", text: $balance)
                 .textFieldStyle(.roundedBorder)
-            TextField("Initial average rate (NTD per unit)", text: $averageRate)
+            TextField("Average cost rate of current balance (NTD per unit)", text: $averageRate)
                 .textFieldStyle(.roundedBorder)
-            Text("For an existing balance, enter the weighted-average acquisition rate. Future exchange transactions can update this cost basis.")
+            Text("Enter the weighted-average cost rate of the remaining balance, not the total exchanged amount. For example, USD 497.30 at NTD 31.5220 creates an NTD cost basis of about NTD 15,675.89.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -961,6 +996,7 @@ private struct ForeignCurrencySummary: Identifiable {
     let amount: Double
     let ntdValue: Double
     let rate: Double?
+    let assetIDs: [Int64]
 
     var id: String { currency }
 }
@@ -1140,7 +1176,9 @@ struct AddAssetSheet: View {
         ("long_term_investment", "Long-term Investment"),
         ("other_asset", "Other Asset")
     ]
-    private let currencies = ["NTD", "USD", "JPY"]
+    private var currencies: [String] {
+        Array(Set(["NTD", "USD", "JPY", currency])).sorted()
+    }
 
     private var exchangeRate: String? {
         guard currency != "NTD",
@@ -1176,7 +1214,7 @@ struct AddAssetSheet: View {
                 .textFieldStyle(.roundedBorder)
 
             if currency != "NTD" {
-                TextField(L10n.text("Initial NTD cost", language: appLanguage), text: $ntdCost)
+                TextField(L10n.text("Current balance cost basis (NTD)", language: appLanguage), text: $ntdCost)
                     .textFieldStyle(.roundedBorder)
                 HStack {
                     Text(L10n.text("Average exchange rate", language: appLanguage))
@@ -1350,7 +1388,9 @@ struct EditAssetSheet: View {
     @State private var ntdCost: String
     @State private var errorMessage: String?
 
-    private let currencies = ["NTD", "USD", "JPY"]
+    private var currencies: [String] {
+        Array(Set(["NTD", "USD", "JPY", currency])).sorted()
+    }
 
     init(asset: DatabaseManager.AssetRecord) {
         self.asset = asset
@@ -1370,7 +1410,7 @@ struct EditAssetSheet: View {
             .pickerStyle(.menu)
             TextField("Amount", text: $amount).textFieldStyle(.roundedBorder)
             if currency != "NTD" {
-                TextField("Initial NTD cost", text: $ntdCost).textFieldStyle(.roundedBorder)
+                TextField("Current balance cost basis (NTD)", text: $ntdCost).textFieldStyle(.roundedBorder)
             }
             HStack {
                 Spacer()
@@ -1912,7 +1952,16 @@ struct PortfolioMetricCard: View {
     let value: String
     let detail: String
     let tint: Color
+    let height: CGFloat
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+
+    init(title: String, value: String, detail: String, tint: Color, height: CGFloat = 132) {
+        self.title = title
+        self.value = value
+        self.detail = detail
+        self.tint = tint
+        self.height = height
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1920,7 +1969,7 @@ struct PortfolioMetricCard: View {
             Text(value).font(.title2.weight(.bold)).foregroundStyle(tint)
             Text(detail).font(.caption).foregroundStyle(tint == .primary ? .secondary : tint)
         }
-        .frame(maxWidth: .infinity, minHeight: 132, maxHeight: 132, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .topLeading)
         .padding(18)
         .background(.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
@@ -2033,15 +2082,17 @@ struct DividendManagementView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            HStack {
-                Spacer()
-                Button(action: { showingAdd = true }) { Image(systemName: "plus") }
-                    .buttonStyle(.plain)
-                    .font(.callout.weight(.semibold))
-            }
-            .padding(.horizontal, 32)
-
             VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                    Button(action: { showingAdd = true }) { Image(systemName: "plus") }
+                        .buttonStyle(.plain)
+                        .font(.callout.weight(.semibold))
+                }
+                .padding(.horizontal, 48)
+                .padding(.top, 16)
+                .padding(.bottom, 10)
+
                 HStack {
                     Text("SECURITY").frame(maxWidth: .infinity, alignment: .leading)
                     Text("DATE").frame(width: 130, alignment: .trailing)
@@ -2050,6 +2101,7 @@ struct DividendManagementView: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 48)
+                .padding(.top, 8)
                 .padding(.bottom, 10)
 
                 ScrollView {

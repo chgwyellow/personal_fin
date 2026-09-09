@@ -657,7 +657,16 @@ final class DatabaseManager {
         SELECT a.asset_group,
                COALESCE(SUM(
                    CASE
-                       WHEN h.id IS NULL THEN a.ntd_value
+                       WHEN h.id IS NULL THEN CASE
+                           WHEN a.currency = 'NTD' THEN a.ntd_value
+                           ELSE COALESCE(
+                               a.value * (
+                                   SELECT er.rate FROM exchange_rates er
+                                   WHERE er.base_currency = a.currency AND er.quote_currency = 'NTD'
+                                   ORDER BY er.observed_at DESC, er.id DESC LIMIT 1
+                               ), a.ntd_value
+                           )
+                       END
                        WHEN h.currency = 'NTD' THEN COALESCE(
                            h.shares * (
                                SELECT mp.price FROM market_prices mp
@@ -712,7 +721,16 @@ final class DatabaseManager {
                CASE WHEN h.id IS NULL THEN a.name ELSE a.category END AS child_name,
                COALESCE(SUM(
                    CASE
-                       WHEN h.id IS NULL THEN a.ntd_value
+                       WHEN h.id IS NULL THEN CASE
+                           WHEN a.currency = 'NTD' THEN a.ntd_value
+                           ELSE COALESCE(
+                               a.value * (
+                                   SELECT er.rate FROM exchange_rates er
+                                   WHERE er.base_currency = a.currency AND er.quote_currency = 'NTD'
+                                   ORDER BY er.observed_at DESC, er.id DESC LIMIT 1
+                               ), a.ntd_value
+                           )
+                       END
                        WHEN h.currency = 'NTD' THEN COALESCE(
                            h.shares * (SELECT mp.price FROM market_prices mp
                                WHERE mp.symbol = h.symbol AND mp.market = h.market
