@@ -8,6 +8,8 @@
 	<string>PersonalFinanceApp</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.yellow.fintrack</string>
+	<key>CFBundleIconFile</key>
+	<string>FinTrack.icns</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

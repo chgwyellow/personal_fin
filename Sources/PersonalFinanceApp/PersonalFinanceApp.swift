@@ -2885,10 +2885,11 @@ struct IncomeStatementView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            let monthlyProfit = total(for: "income") - total(for: "expense")
             HStack(spacing: 16) {
                 MetricCard(title: "Total Income", value: ntd(total(for: "income")), change: "0.0% vs last month")
                 MetricCard(title: "Total Expenses", value: ntd(total(for: "expense")), change: "0.0% vs last month")
-                MetricCard(title: "Monthly Profit", value: ntd(total(for: "income") - total(for: "expense")), change: "0.0% vs last month")
+                MetricCard(title: "Monthly Profit", value: ntd(monthlyProfit), change: "0.0% vs last month", warning: monthlyProfit < 0)
             }
             .padding(.horizontal, 24)
 
@@ -3610,14 +3611,22 @@ struct MetricCard: View {
     let title: String
     let value: String
     let change: String
+    var warning = false
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.text(title, language: appLanguage)).foregroundStyle(.secondary)
-            Text(value).font(.title2.weight(.bold))
+            HStack(spacing: 6) {
+                Text(L10n.text(title, language: appLanguage)).foregroundStyle(.secondary)
+                if warning {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .accessibilityLabel("Warning")
+                }
+            }
+            Text(value).font(.title2.weight(.bold)).foregroundStyle(warning ? .red : .primary)
             Text(change.replacingOccurrences(of: " vs last month", with: appLanguage == AppLanguage.traditionalChinese.rawValue ? " 較上月" : " vs last month"))
-                .font(.caption).foregroundStyle(change.hasPrefix("-") ? .red : .green)
+                .font(.caption).foregroundStyle(warning || change.hasPrefix("-") ? .red : .green)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
