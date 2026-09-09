@@ -683,10 +683,10 @@ private enum FinTrackTheme {
     static let negativeMuted = adaptive(light: (0xAD / 255.0, 0x77 / 255.0, 0x72 / 255.0), dark: (0xA3 / 255.0, 0x6F / 255.0, 0x6B / 255.0))
     static let warning = adaptive(light: (0x8B / 255.0, 0x6D / 255.0, 0x38 / 255.0), dark: (0xC9 / 255.0, 0xAA / 255.0, 0x72 / 255.0))
     static let info = primary
-    static let logoContainerBackground = adaptive(light: (0xEE / 255.0, 0xED / 255.0, 0xE8 / 255.0), dark: (0x3A / 255.0, 0x3E / 255.0, 0x3C / 255.0))
-    static let logoContainerHover = adaptive(light: (0xE5 / 255.0, 0xE4 / 255.0, 0xDF / 255.0), dark: (0x42 / 255.0, 0x47 / 255.0, 0x44 / 255.0))
-    static let logoContainerBorder = adaptive(light: (0xD1 / 255.0, 0xD2 / 255.0, 0xCD / 255.0), dark: (0x4A / 255.0, 0x4F / 255.0, 0x4C / 255.0))
-    static let logoFallbackBackground = adaptive(light: (0xDD / 255.0, 0xE7 / 255.0, 0xEA / 255.0), dark: (0x34 / 255.0, 0x4A / 255.0, 0x52 / 255.0))
+    static let logoContainerBackground = adaptive(light: (0xEE / 255.0, 0xED / 255.0, 0xE8 / 255.0), dark: (0x37 / 255.0, 0x3B / 255.0, 0x39 / 255.0))
+    static let logoContainerHover = adaptive(light: (0xE5 / 255.0, 0xE4 / 255.0, 0xDF / 255.0), dark: (0x3E / 255.0, 0x43 / 255.0, 0x40 / 255.0))
+    static let logoContainerBorder = adaptive(light: (0xD1 / 255.0, 0xD2 / 255.0, 0xCD / 255.0), dark: (0x50 / 255.0, 0x55 / 255.0, 0x52 / 255.0))
+    static let logoFallbackBackground = adaptive(light: (0xDD / 255.0, 0xE7 / 255.0, 0xEA / 255.0), dark: (0x32 / 255.0, 0x46 / 255.0, 0x4D / 255.0))
     static let logoFallbackBorder = adaptive(light: (0xC4 / 255.0, 0xD3 / 255.0, 0xD8 / 255.0), dark: (0x49 / 255.0, 0x61 / 255.0, 0x6A / 255.0))
     static let logoFallbackForeground = adaptive(light: (0x58 / 255.0, 0x7D / 255.0, 0x8D / 255.0), dark: (0x96 / 255.0, 0xB6 / 255.0, 0xC3 / 255.0))
 
@@ -784,6 +784,7 @@ private struct CompanyLogoView: View {
     let symbol: String
     let name: String
     @StateObject private var loader: CompanyLogoLoader
+    @State private var isHovering = false
 
     init(symbol: String, name: String) {
         self.symbol = symbol
@@ -799,15 +800,19 @@ private struct CompanyLogoView: View {
                     .interpolation(.high)
                     .scaledToFit()
                     .padding(8)
+                    .accessibilityHidden(true)
             } else {
                 Text(fallbackInitial)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(FinTrackTheme.logoFallbackForeground)
+                    .accessibilityHidden(true)
             }
         }
         .frame(width: 48, height: 48)
         .background(
-            loader.image == nil ? FinTrackTheme.logoFallbackBackground : FinTrackTheme.logoContainerBackground,
+            loader.image == nil
+                ? FinTrackTheme.logoFallbackBackground
+                : (isHovering ? FinTrackTheme.logoContainerHover : FinTrackTheme.logoContainerBackground),
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
         )
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -815,6 +820,8 @@ private struct CompanyLogoView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(loader.image == nil ? FinTrackTheme.logoFallbackBorder : FinTrackTheme.logoContainerBorder, lineWidth: 1)
         }
+        .onHover { isHovering = $0 }
+        .accessibilityHidden(true)
         .task(id: symbol) {
             await loader.load()
         }
@@ -886,10 +893,11 @@ enum L10n {
 struct DashboardView: View {
     @State private var selectedPage = "Overview"
     @AppStorage("appearanceMode") private var appearanceMode = "system"
+    @State private var activeAppearanceMode = "system"
     @State private var resolvedSystemScheme: ColorScheme = .dark
 
     private var preferredColorScheme: ColorScheme? {
-        switch appearanceMode {
+        switch activeAppearanceMode {
         case "light": return .light
         case "dark": return .dark
         default: return nil
@@ -905,7 +913,7 @@ struct DashboardView: View {
                 DashboardContentView(
                     pageTitle: selectedPage,
                     selectedPage: $selectedPage,
-                    appearanceMode: $appearanceMode
+                    appearanceMode: $activeAppearanceMode
                 )
                 Button {
                     selectedPage = "Help"
@@ -925,12 +933,14 @@ struct DashboardView: View {
         .foregroundStyle(FinTrackTheme.textPrimary)
         .tint(FinTrackTheme.primary)
         .preferredColorScheme(preferredColorScheme)
-        .environment(\.colorScheme, appearanceMode == "system" ? resolvedSystemScheme : (appearanceMode == "light" ? .light : .dark))
+        .environment(\.colorScheme, activeAppearanceMode == "system" ? resolvedSystemScheme : (activeAppearanceMode == "light" ? .light : .dark))
         .onAppear {
             hideWindowTitle()
-            applyAppearance(appearanceMode)
+            activeAppearanceMode = appearanceMode
+            applyAppearance(activeAppearanceMode)
         }
-        .onChange(of: appearanceMode) { _, newMode in
+        .onChange(of: activeAppearanceMode) { _, newMode in
+            appearanceMode = newMode
             applyAppearance(newMode)
         }
     }
@@ -948,8 +958,8 @@ struct DashboardView: View {
         NSApp.appearance = appearance
         NSApp.windows.forEach { $0.appearance = appearance }
         if mode == "system" {
-            let effective = NSApp.effectiveAppearance
-            resolvedSystemScheme = effective.bestMatch(from: [.aqua, .darkAqua]) == .aqua ? .light : .dark
+            let systemStyle = UserDefaults.standard.string(forKey: "AppleInterfaceStyle")?.lowercased()
+            resolvedSystemScheme = systemStyle == "dark" ? .dark : .light
         } else {
             resolvedSystemScheme = mode == "light" ? .light : .dark
         }
