@@ -2992,7 +2992,7 @@ private struct AccountAllocationCard: View {
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
-        let maximum = totals.map(\.1).max() ?? 1
+        let maximum = max(totals.map { abs($0.1) }.max() ?? 0, 1)
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("Account Allocation", language: appLanguage)).font(.title3.weight(.semibold))
             if totals.isEmpty {
@@ -3008,8 +3008,8 @@ private struct AccountAllocationCard: View {
                         }
                         GeometryReader { geometry in
                             Capsule()
-                                .fill(Color.accentColor.opacity(0.72))
-                                .frame(width: max(6, geometry.size.width * amount / maximum), height: 8)
+                                .fill((amount < 0 ? Color.red : Color.accentColor).opacity(0.72))
+                                .frame(width: max(6, geometry.size.width * abs(amount) / maximum), height: 8)
                         }
                         .frame(height: 8)
                     }
@@ -3084,7 +3084,7 @@ private struct StatementItemSheet: View {
 
     private func save() {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let value = Double(amount), value >= 0 else {
+              let value = Double(amount) else {
             errorMessage = "Enter a name and valid amount."
             return
         }
