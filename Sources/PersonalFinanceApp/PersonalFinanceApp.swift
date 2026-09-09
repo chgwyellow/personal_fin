@@ -858,6 +858,7 @@ enum L10n {
         "Financial Indicators": "財務指數", "Free Cash Flow": "自由現金流量", "Liability Ratio": "負債比率",
         "Cash Ratio": "現金比率", "Equity Multiplier": "權益乘數", "Net Worth Growth Rate": "淨值成長率",
         "Net Worth History": "淨值歷史", "Chart area — to be connected to snapshots": "圖表區域 — 將連接資產快照", "Use the sidebar to switch between your financial sections. Market prices and exchange rates are refreshed when the relevant page is opened.": "使用左側邊欄切換財務區塊；開啟相關頁面時會更新股價與匯率。",
+        "Overview Guide": "總覽使用說明", "What you see here": "這裡可以看到你的整體財務狀況。", "Overview brings your financial picture together in one place.": "總覽會把你的整體財務狀況集中在同一個頁面。", "At a glance": "快速掌握", "Total assets means everything you currently own, converted to NTD.": "總資產是你目前擁有的資產總值，外幣會換算成新台幣。", "Total liabilities means the money you currently owe.": "總負債是你目前需要償還的金額。", "Net worth is your assets minus your liabilities.": "淨值就是總資產扣除總負債後，真正剩下的金額。", "Your details": "詳細內容", "The sections below show where your money is held and what makes up each total. Investment values and foreign-currency balances are converted to NTD when possible.": "下方會列出你的資產與負債明細，讓你知道資金目前放在哪裡，以及每個總額是由哪些項目組成。投資與外幣會在可取得資料時換算成新台幣。", "Changes over time": "查看變化", "The percentage below an item compares it with the previous month. You can hide these percentages in Settings.": "項目下方的百分比是與上個月相比的變化，也可以在設定中關閉。", "Adding information": "新增資料", "Use the + button beside a details card to add an asset or liability. Use the related page in the sidebar to add investments, foreign currency, or income and expenses.": "使用明細卡片旁的＋按鈕新增資產或負債；投資、外幣及收入支出，請從左側邊欄進入對應頁面新增。", "Automatic updates": "自動更新", "When you open a related page, FinTrack tries to refresh market prices and exchange rates. If the network is unavailable, your saved local data remains available.": "開啟相關頁面時，FinTrack 會嘗試更新市場價格與匯率；如果沒有網路，仍會保留本機已儲存的資料。",
         "Income": "收入", "Expenses": "支出", "Savings": "儲蓄", "Salary": "薪資",
         "Bonus": "獎金", "Side Income": "副業收入", "Base Salary": "本薪", "Overtime": "加班費",
         "Freelance": "接案收入", "Necessary": "必要開銷", "Credit Card": "信用卡", "Daily Expenses": "日常花費",
@@ -889,6 +890,7 @@ enum L10n {
 
 struct DashboardView: View {
     @State private var selectedPage = "Overview"
+    @State private var helpPage = "Overview"
     @AppStorage("appearanceMode") private var appearanceMode = "system"
     @State private var activeAppearanceMode = "system"
     @State private var resolvedSystemScheme: ColorScheme = .dark
@@ -909,10 +911,12 @@ struct DashboardView: View {
             ZStack(alignment: .topTrailing) {
                 DashboardContentView(
                     pageTitle: selectedPage,
+                    helpPage: helpPage,
                     selectedPage: $selectedPage,
                     appearanceMode: $activeAppearanceMode
                 )
                 Button {
+                    helpPage = selectedPage
                     selectedPage = "Help"
                 } label: {
                     Image(systemName: "questionmark.circle")
@@ -1105,6 +1109,7 @@ struct SidebarIconButton: View {
 
 struct DashboardContentView: View {
     let pageTitle: String
+    let helpPage: String
     @Binding var selectedPage: String
     @Binding var appearanceMode: String
     @EnvironmentObject private var appModel: AppModel
@@ -1138,7 +1143,7 @@ struct DashboardContentView: View {
                         .padding(24)
                 }
             } else if pageTitle == "Help" {
-                HelpView()
+                HelpView(page: helpPage)
             } else {
                 OverviewView(showChanges: showDetailChanges)
             }
@@ -1150,6 +1155,43 @@ struct DashboardContentView: View {
                 showDetailChangesInitialized = true
             }
         }
+    }
+}
+
+private struct CurrencyBadge: View {
+    let code: String
+
+    private var flag: String? {
+        switch code.uppercased() {
+        case "USD": return "🇺🇸"
+        case "JPY": return "🇯🇵"
+        case "EUR": return "🇪🇺"
+        case "GBP": return "🇬🇧"
+        case "AUD": return "🇦🇺"
+        case "CAD": return "🇨🇦"
+        case "HKD": return "🇭🇰"
+        case "CNY": return "🇨🇳"
+        case "KRW": return "🇰🇷"
+        case "SGD": return "🇸🇬"
+        case "CHF": return "🇨🇭"
+        case "NZD": return "🇳🇿"
+        default: return nil
+        }
+    }
+
+    var body: some View {
+        Group {
+            if let flag {
+                Text(flag)
+                    .font(.title3)
+            } else {
+                Text(String(code.prefix(1)))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(FinTrackTheme.primary)
+            }
+        }
+        .frame(width: 30, height: 30)
+        .accessibilityLabel(Text(code))
     }
 }
 
@@ -1201,9 +1243,8 @@ struct ForeignCurrencyView: View {
         let totalNTD = summaries.reduce(0) { $0 + $1.ntdValue }
         let currencyCount = summaries.count
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 16) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
                     PortfolioMetricCard(
                         title: "Total NTD Equivalent",
                         value: ntd(totalNTD),
@@ -1218,13 +1259,17 @@ struct ForeignCurrencyView: View {
                         tint: .primary,
                         height: 100
                     )
-                }
+            }
+            .padding(.horizontal, 24)
 
-                Rectangle()
-                    .fill(FinTrackTheme.divider)
-                    .frame(height: 1)
-                    .padding(.vertical, 4)
+            Rectangle()
+                .fill(FinTrackTheme.divider)
+                .frame(height: 1)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 4)
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                 VStack(spacing: 0) {
                     HStack {
                         Spacer()
@@ -1272,9 +1317,12 @@ struct ForeignCurrencyView: View {
                     } else {
                         ForEach(sortedSummaries) { summary in
                             HStack(spacing: 16) {
-                                Text(summary.currency)
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                HStack(spacing: 10) {
+                                    CurrencyBadge(code: summary.currency)
+                                    Text(summary.currency)
+                                        .font(.headline)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 Text(money(summary.amount, currency: summary.currency))
                                     .frame(width: 150, alignment: .trailing)
                                 Text(summary.rate.map { String(format: "NTD %.4f", $0) } ?? "—")
@@ -1302,9 +1350,10 @@ struct ForeignCurrencyView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
 
                 foreignTransactionCard
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
         }
         .task {
             await appModel.refreshForeignExchangeRates()
@@ -1568,12 +1617,70 @@ private struct AddForeignCurrencySheet: View {
     @State private var averageRate = ""
     @State private var errorMessage: String?
 
+    private struct CurrencyOption: Identifiable {
+        let code: String
+        let englishName: String
+        let chineseName: String
+
+        var id: String { code }
+    }
+
+    private let currencyOptions: [CurrencyOption] = [
+        CurrencyOption(code: "USD", englishName: "US Dollar", chineseName: "美元"),
+        CurrencyOption(code: "JPY", englishName: "Japanese Yen", chineseName: "日圓"),
+        CurrencyOption(code: "EUR", englishName: "Euro", chineseName: "歐元"),
+        CurrencyOption(code: "GBP", englishName: "British Pound", chineseName: "英鎊"),
+        CurrencyOption(code: "AUD", englishName: "Australian Dollar", chineseName: "澳幣"),
+        CurrencyOption(code: "CAD", englishName: "Canadian Dollar", chineseName: "加幣"),
+        CurrencyOption(code: "HKD", englishName: "Hong Kong Dollar", chineseName: "港幣"),
+        CurrencyOption(code: "CNY", englishName: "Chinese Yuan", chineseName: "人民幣"),
+        CurrencyOption(code: "KRW", englishName: "South Korean Won", chineseName: "韓元"),
+        CurrencyOption(code: "SGD", englishName: "Singapore Dollar", chineseName: "新加坡幣"),
+        CurrencyOption(code: "CHF", englishName: "Swiss Franc", chineseName: "瑞士法郎"),
+        CurrencyOption(code: "NZD", englishName: "New Zealand Dollar", chineseName: "紐幣")
+    ]
+
+    private var matchingCurrencies: [CurrencyOption] {
+        let query = currency.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return [] }
+        return currencyOptions.filter {
+            $0.code.lowercased().contains(query) ||
+            $0.englishName.lowercased().contains(query) ||
+            $0.chineseName.contains(query)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add Foreign Currency")
                 .font(.title2.weight(.bold))
             TextField("Currency code (e.g. EUR)", text: $currency)
                 .textFieldStyle(.roundedBorder)
+            if !matchingCurrencies.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(matchingCurrencies.prefix(8)) { option in
+                        Button {
+                            currency = option.code
+                        } label: {
+                            HStack {
+                                Text(option.code)
+                                    .font(.body.weight(.semibold))
+                                    .frame(width: 52, alignment: .leading)
+                                Text(appLanguage == AppLanguage.traditionalChinese.rawValue
+                                     ? option.chineseName
+                                     : option.englishName)
+                                    .foregroundStyle(FinTrackTheme.textSecondary)
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                    }
+                }
+                .padding(8)
+                .background(FinTrackTheme.surfaceHover, in: RoundedRectangle(cornerRadius: 8))
+            }
             TextField("Current balance", text: $balance)
                 .textFieldStyle(.roundedBorder)
             TextField("Average cost rate of current balance (NTD per unit)", text: $averageRate)
@@ -1787,6 +1894,30 @@ private func shares(_ value: Double, market: String) -> String {
     formatter.minimumFractionDigits = isTaiwan ? 0 : 2
     formatter.maximumFractionDigits = isTaiwan ? 0 : 2
     return formatter.string(from: NSNumber(value: value)) ?? (isTaiwan ? "0" : "0.00")
+}
+
+private func marketCode(for symbol: String) -> String {
+    let normalized = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    guard let suffix = normalized.split(separator: ".", maxSplits: 1).last,
+          normalized.contains(".") else {
+        return "US"
+    }
+
+    switch String(suffix) {
+    case "TW": return "TW"
+    case "T": return "JP"
+    case "KS", "KQ": return "KR"
+    case "HK": return "HK"
+    case "SS", "SZ": return "CN"
+    case "L": return "GB"
+    case "AX": return "AU"
+    case "TO": return "CA"
+    case "SI": return "SG"
+    case "SW": return "CH"
+    case "PA": return "FR"
+    case "DE": return "DE"
+    default: return String(suffix)
+    }
 }
 
 private func signedNTD(_ value: Double) -> String {
@@ -2187,7 +2318,6 @@ struct AddHoldingSheet: View {
     @State private var symbol = ""
     @State private var securityName = ""
     @State private var assetGroup = "liquid_investment"
-    @State private var market = "TW"
     @State private var instrumentType = "stock"
     @State private var etfType = "equity"
     @State private var currency = "NTD"
@@ -2203,9 +2333,9 @@ struct AddHoldingSheet: View {
     ]
 
     private var availableSubcategories: [String] {
-        Array(Set(appModel.assets
+        Array(Set(appModel.holdingRecords
             .filter { $0.assetGroup == assetGroup }
-            .map(\.name)))
+            .map(\.category)))
             .sorted(by: >)
     }
 
@@ -2230,6 +2360,7 @@ struct AddHoldingSheet: View {
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.vertical, 5)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -2244,24 +2375,17 @@ struct AddHoldingSheet: View {
                 }
             }
             .pickerStyle(.menu)
-            if availableSubcategories.isEmpty {
-                Text("Create a subcategory from Overview first.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Picker("Subcategory", selection: $subcategory) {
+            Picker("Subcategory", selection: $subcategory) {
+                if availableSubcategories.isEmpty {
+                    Text("No subcategories available").tag("")
+                } else {
                     ForEach(availableSubcategories, id: \.self) { category in
                         Text(category).tag(category)
                     }
                 }
-                .pickerStyle(.menu)
-            }
-
-            Picker("Market", selection: $market) {
-                Text("Taiwan").tag("TW")
-                Text("United States").tag("US")
             }
             .pickerStyle(.menu)
+
             Picker("Type", selection: $instrumentType) {
                 Text("Stock").tag("stock")
                 Text("ETF").tag("etf")
@@ -2307,12 +2431,12 @@ struct AddHoldingSheet: View {
         }
         .onChange(of: symbol) { _, newValue in
             Task {
-                symbolSuggestions = await appModel.searchMarketSymbols(query: newValue)
-            }
-        }
-        .onChange(of: market) { _, _ in
-            Task {
-                symbolSuggestions = await appModel.searchMarketSymbols(query: symbol)
+                let query = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !query.isEmpty else {
+                    symbolSuggestions = []
+                    return
+                }
+                symbolSuggestions = await appModel.searchMarketSymbols(query: query)
             }
         }
     }
@@ -2334,7 +2458,7 @@ struct AddHoldingSheet: View {
                 category: subcategory,
                 symbol: symbol,
                 securityName: securityName,
-                market: market,
+                market: marketCode(for: symbol),
                 instrumentType: instrumentType,
                 etfType: instrumentType == "etf" ? etfType : nil,
                 currency: currency,
@@ -2356,7 +2480,6 @@ struct EditHoldingSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var symbol: String
     @State private var securityName: String
-    @State private var market: String
     @State private var instrumentType: String
     @State private var etfType: String
     @State private var currency: String
@@ -2369,7 +2492,6 @@ struct EditHoldingSheet: View {
         self.holding = holding
         _symbol = State(initialValue: holding.symbol)
         _securityName = State(initialValue: holding.securityName)
-        _market = State(initialValue: holding.market)
         _instrumentType = State(initialValue: holding.instrumentType)
         _etfType = State(initialValue: holding.etfType ?? "equity")
         _currency = State(initialValue: holding.currency)
@@ -2394,6 +2516,7 @@ struct EditHoldingSheet: View {
                                 Text(suggestion.displayName).font(.caption).foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -2401,11 +2524,6 @@ struct EditHoldingSheet: View {
                 .padding(8)
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
             }
-            Picker("Market", selection: $market) {
-                Text("Taiwan").tag("TW")
-                Text("United States").tag("US")
-            }
-            .pickerStyle(.menu)
             Picker("Type", selection: $instrumentType) {
                 Text("Stock").tag("stock")
                 Text("ETF").tag("etf")
@@ -2437,7 +2555,14 @@ struct EditHoldingSheet: View {
         .padding(24)
         .frame(width: 440)
         .onChange(of: symbol) { _, newValue in
-            Task { suggestions = await appModel.searchMarketSymbols(query: newValue) }
+            Task {
+                let query = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !query.isEmpty else {
+                    suggestions = []
+                    return
+                }
+                suggestions = await appModel.searchMarketSymbols(query: query)
+            }
         }
     }
 
@@ -2453,7 +2578,7 @@ struct EditHoldingSheet: View {
                 id: holding.id,
                 symbol: symbol,
                 securityName: securityName,
-                market: market,
+                market: marketCode(for: symbol),
                 instrumentType: instrumentType,
                 etfType: instrumentType == "etf" ? etfType : nil,
                 currency: currency,
@@ -3810,17 +3935,76 @@ struct SettingsCard: View {
 }
 
 struct HelpView: View {
+    let page: String
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L10n.text("Help", language: appLanguage))
-                .font(.title2.weight(.semibold))
-            Text(L10n.text("Use the sidebar to switch between your financial sections. Market prices and exchange rates are refreshed when the relevant page is opened.", language: appLanguage))
-                .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if page == "Overview" {
+                    overviewHelp
+                } else {
+                    Text(L10n.text("Help", language: appLanguage))
+                        .font(.title2.weight(.semibold))
+                    Text(L10n.text("Use the sidebar to switch between your financial sections. Market prices and exchange rates are refreshed when the relevant page is opened.", language: appLanguage))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(24)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(24)
+    }
+
+    private var overviewHelp: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(L10n.text("Overview Guide", language: appLanguage))
+                .font(.title2.weight(.semibold))
+
+            helpSection(
+                title: L10n.text("What you see here", language: appLanguage),
+                body: L10n.text("Overview brings your financial picture together in one place.", language: appLanguage)
+            )
+
+            helpSection(
+                title: L10n.text("At a glance", language: appLanguage),
+                body: ["Total assets means everything you currently own, converted to NTD.", "Total liabilities means the money you currently owe.", "Net worth is your assets minus your liabilities."]
+                    .map { L10n.text($0, language: appLanguage) }
+                    .joined(separator: "\n")
+            )
+
+            helpSection(
+                title: L10n.text("Your details", language: appLanguage),
+                body: L10n.text("The sections below show where your money is held and what makes up each total. Investment values and foreign-currency balances are converted to NTD when possible.", language: appLanguage)
+            )
+
+            helpSection(
+                title: L10n.text("Changes over time", language: appLanguage),
+                body: L10n.text("The percentage below an item compares it with the previous month. You can hide these percentages in Settings.", language: appLanguage)
+            )
+
+            helpSection(
+                title: L10n.text("Adding information", language: appLanguage),
+                body: L10n.text("Use the + button beside a details card to add an asset or liability. Use the related page in the sidebar to add investments, foreign currency, or income and expenses.", language: appLanguage)
+            )
+
+            Text(L10n.text("When you open a related page, FinTrack tries to refresh market prices and exchange rates. If the network is unavailable, your saved local data remains available.", language: appLanguage))
+                .font(.footnote)
+                .foregroundStyle(FinTrackTheme.textMuted)
+        }
+    }
+
+    private func helpSection(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            Text(body)
+                .foregroundStyle(FinTrackTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
     }
 }
 

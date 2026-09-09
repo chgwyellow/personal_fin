@@ -331,6 +331,7 @@ final class DatabaseManager {
             try execute(schemaSQL)
             try addNTDValueColumnIfNeeded()
             try addHoldingsClassificationColumnsIfNeeded()
+            try removeHoldingMarketConstraintIfNeeded()
         } catch {
             sqlite3_close(database)
             database = nil
@@ -1375,7 +1376,7 @@ final class DatabaseManager {
         asset_id INTEGER NOT NULL UNIQUE,
         symbol TEXT NOT NULL,
         security_name TEXT NOT NULL,
-        market TEXT NOT NULL CHECK (market IN ('TW', 'US')),
+        market TEXT NOT NULL,
         instrument_type TEXT NOT NULL DEFAULT 'stock' CHECK (
             instrument_type IN ('stock', 'etf')
         ),
@@ -1508,5 +1509,61 @@ final class DatabaseManager {
         } catch DatabaseError.queryFailed(let message) where message.contains("duplicate column name") {
             // The column already exists.
         }
+    }
+
+    private func removeHoldingMarketConstraintIfNeeded() throws {
+        let sql = "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'holdings';"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        let tableSQL: String?
+        if sqlite3_step(statement) == SQLITE_ROW, let tableSQLPointer = sqlite3_column_text(statement, 0) {
+            tableSQL = String(cString: tableSQLPointer)
+        } else {
+            tableSQL = nil
+        }
+        sqlite3_finalize(statement)
+        statement = nil
+        guard let tableSQL else { return }
+        guard tableSQL.contains("CHECK (market IN ('TW', 'US'))") else { return }
+
+        try execute("PRAGMA foreign_keys = OFF;")
+        do {
+            try execute("BEGIN TRANSACTION;")
+            try execute("""
+            CREATE TABLE holdings_migrated (
+                id INTEGER PRIMARY KEY,
+                asset_id INTEGER NOT NULL UNIQUE,
+                symbol TEXT NOT NULL,
+                security_name TEXT NOT NULL,
+                market TEXT NOT NULL,
+                instrument_type TEXT NOT NULL DEFAULT 'stock' CHECK (instrument_type IN ('stock', 'etf')),
+                etf_type TEXT CHECK (etf_type IS NULL OR etf_type IN ('equity', 'bond')),
+                currency TEXT NOT NULL,
+                shares NUMERIC NOT NULL DEFAULT 0,
+                total_cost NUMERIC NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+            );
+            """)
+            try execute("""
+            INSERT INTO holdings_migrated
+                (id, asset_id, symbol, security_name, market, instrument_type, etf_type,
+                 currency, shares, total_cost, created_at, updated_at)
+            SELECT id, asset_id, symbol, security_name, market, instrument_type, etf_type,
+                   currency, shares, total_cost, created_at, updated_at
+            FROM holdings;
+            """)
+            try execute("DROP TABLE holdings;")
+            try execute("ALTER TABLE holdings_migrated RENAME TO holdings;")
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            try? execute("PRAGMA foreign_keys = ON;")
+            throw error
+        }
+        try execute("PRAGMA foreign_keys = ON;")
     }
 }
