@@ -128,6 +128,35 @@ final class DatabaseManager {
         let currency: String
     }
 
+    struct IncomeStatementItem: Identifiable {
+        let id: Int64
+        let parentID: Int64?
+        let section: String
+        let name: String
+        let amount: Double
+        let accountName: String?
+    }
+
+    func listStatementAccounts() throws -> [String] {
+        let sql = "SELECT name FROM statement_accounts ORDER BY name COLLATE NOCASE;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw DatabaseError.queryFailed(databaseMessage) }
+        var names: [String] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            names.append(String(cString: sqlite3_column_text(statement, 0)))
+        }
+        return names
+    }
+
+    func ensureStatementAccount(name: String) throws {
+        let sql = "INSERT OR IGNORE INTO statement_accounts (name) VALUES (?);"
+        try executePrepared(sql) { statement in
+            let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, name, -1, destructor)
+        }
+    }
+
     enum DatabaseError: LocalizedError {
         case openFailed(String)
         case queryFailed(String)
@@ -649,6 +678,66 @@ final class DatabaseManager {
 
     func deleteDividend(id: Int64) throws {
         try execute("DELETE FROM dividends WHERE id = \(id);")
+    }
+
+    func listIncomeStatementItems() throws -> [IncomeStatementItem] {
+        let sql = "SELECT id, parent_id, section, name, amount, account_name FROM income_statement_items ORDER BY section, sort_order, id;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw DatabaseError.queryFailed(databaseMessage) }
+        var records: [IncomeStatementItem] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            records.append(IncomeStatementItem(
+                id: sqlite3_column_int64(statement, 0),
+                parentID: sqlite3_column_type(statement, 1) == SQLITE_NULL ? nil : sqlite3_column_int64(statement, 1),
+                section: String(cString: sqlite3_column_text(statement, 2)),
+                name: String(cString: sqlite3_column_text(statement, 3)),
+                amount: sqlite3_column_double(statement, 4),
+                accountName: sqlite3_column_type(statement, 5) == SQLITE_NULL ? nil : String(cString: sqlite3_column_text(statement, 5))
+            ))
+        }
+        return records
+    }
+
+    @discardableResult
+    func createIncomeStatementItem(section: String, parentID: Int64?, name: String, amount: Double, accountName: String) throws -> Int64 {
+        let sql = "INSERT INTO income_statement_items (parent_id, section, name, amount, account_name) VALUES (?, ?, ?, ?, ?);"
+        var newID: Int64 = 0
+        try executePrepared(sql) { statement in
+            let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            if let parentID { sqlite3_bind_int64(statement, 1, parentID) } else { sqlite3_bind_null(statement, 1) }
+            sqlite3_bind_text(statement, 2, section, -1, destructor)
+            sqlite3_bind_text(statement, 3, name, -1, destructor)
+            sqlite3_bind_double(statement, 4, amount)
+            sqlite3_bind_text(statement, 5, accountName, -1, destructor)
+            newID = sqlite3_last_insert_rowid(database)
+        }
+        return newID
+    }
+
+    func updateIncomeStatementItem(id: Int64, name: String, amount: Double, accountName: String) throws {
+        let sql = "UPDATE income_statement_items SET name = ?, amount = ?, account_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;"
+        try executePrepared(sql) { statement in
+            let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, name, -1, destructor)
+            sqlite3_bind_double(statement, 2, amount)
+            sqlite3_bind_text(statement, 3, accountName, -1, destructor)
+            sqlite3_bind_int64(statement, 4, id)
+        }
+    }
+
+    func deleteIncomeStatementItem(id: Int64) throws {
+        let sql = """
+        WITH RECURSIVE descendants(id) AS (
+            SELECT id FROM income_statement_items WHERE id = ?
+            UNION ALL
+            SELECT child.id FROM income_statement_items child JOIN descendants parent ON child.parent_id = parent.id
+        )
+        DELETE FROM income_statement_items WHERE id IN (SELECT id FROM descendants);
+        """
+        try executePrepared(sql) { statement in
+            sqlite3_bind_int64(statement, 1, id)
+        }
     }
 
     /// Returns asset totals in NTD, grouped by the balance-sheet asset group.
@@ -1200,6 +1289,25 @@ final class DatabaseManager {
         currency TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS income_statement_items (
+        id INTEGER PRIMARY KEY,
+        parent_id INTEGER,
+        section TEXT NOT NULL CHECK (section IN ('income', 'expense', 'savings')),
+        name TEXT NOT NULL,
+        amount NUMERIC NOT NULL DEFAULT 0,
+        account_name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (parent_id) REFERENCES income_statement_items(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS statement_accounts (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS market_prices (

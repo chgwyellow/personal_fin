@@ -42,6 +42,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var holdingRecords: [DatabaseManager.HoldingRecord] = []
     @Published private(set) var recurringRecords: [DatabaseManager.RecurringRecord] = []
     @Published private(set) var dividendRecords: [DatabaseManager.DividendRecord] = []
+    @Published private(set) var incomeStatementItems: [DatabaseManager.IncomeStatementItem] = []
+    @Published private(set) var statementAccounts: [String] = []
     @Published private(set) var foreignExchangeRates: [String: Double] = [:]
     @Published private(set) var foreignExchangeRatesUpdatedAt: Date?
     @Published private(set) var todayPLNTD: Double?
@@ -55,6 +57,8 @@ final class AppModel: ObservableObject {
         refreshHoldings()
         refreshRecurringInvestments()
         refreshDividends()
+        refreshIncomeStatementItems()
+        refreshStatementAccounts()
         refreshPortfolioTotals()
         refreshAllocations()
     }
@@ -183,6 +187,42 @@ final class AppModel: ObservableObject {
     func refreshDividends() {
         guard let databaseManager else { return }
         dividendRecords = (try? databaseManager.listDividends()) ?? []
+    }
+
+    func refreshIncomeStatementItems() {
+        guard let databaseManager else { return }
+        incomeStatementItems = (try? databaseManager.listIncomeStatementItems()) ?? []
+    }
+
+    func refreshStatementAccounts() {
+        guard let databaseManager else { return }
+        statementAccounts = (try? databaseManager.listStatementAccounts()) ?? []
+    }
+
+    func createIncomeStatementItem(section: String, parentID: Int64?, name: String, amount: Double, accountName: String) throws {
+        guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
+        if !accountName.isEmpty { try databaseManager.ensureStatementAccount(name: accountName) }
+        try databaseManager.createIncomeStatementItem(section: section, parentID: parentID, name: name, amount: amount, accountName: accountName)
+        refreshIncomeStatementItems()
+        refreshStatementAccounts()
+    }
+
+    func updateIncomeStatementItem(id: Int64, name: String, amount: Double, accountName: String) throws {
+        guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
+        if !accountName.isEmpty { try databaseManager.ensureStatementAccount(name: accountName) }
+        try databaseManager.updateIncomeStatementItem(id: id, name: name, amount: amount, accountName: accountName)
+        refreshIncomeStatementItems()
+        refreshStatementAccounts()
+    }
+
+    func deleteIncomeStatementItem(id: Int64) {
+        guard let databaseManager else { return }
+        do {
+            try databaseManager.deleteIncomeStatementItem(id: id)
+            refreshIncomeStatementItems()
+        } catch {
+            NSLog("FinTrack income statement item deletion failed: %@", error.localizedDescription)
+        }
     }
 
     func updateDividend(id: Int64, payDate: String, amount: Double, currency: String) throws {
@@ -578,10 +618,10 @@ enum AppLanguage: String {
 
 enum L10n {
     private static let traditionalChinese: [String: String] = [
-        "Overview": "總覽", "Income Statement": "損益表", "Portfolio": "投資組合",
-        "Recurring Investment": "定期定額", "Foreign Currency": "外幣", "Stock": "股票",
+        "Overview": "總覽", "Income Statement": "損益表", "Portfolio": "投資組合", "Dividends": "股利",
+        "Recurring Investment": "定期定額", "Recurring Rules": "定期定額規則", "Click to view investments": "點擊查看投資紀錄", "Foreign Currency": "外幣", "Stock": "股票",
         "Total NTD Equivalent": "新台幣等價總額", "Currencies Held": "持有幣別", "Rates Updated": "匯率更新", "Latest Rate": "最新匯率",
-        "live exchange rates": "即時匯率", "ExchangeRate-API": "ExchangeRate-API",
+        "live exchange rates": "即時匯率", "ExchangeRate-API": "ExchangeRate-API", "converted from foreign-currency balances": "由外幣餘額換算",
         "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價", "CURRENCY": "幣別", "SECURITY": "標的", "DATE": "日期", "AMOUNT": "金額",
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
         "No recurring investments": "目前沒有定期定額",
@@ -610,7 +650,7 @@ enum L10n {
         "INVESTED": "投入成本", "HOLDINGS": "持有資產", "SYMBOL": "標的", "LAST": "現價",
         "CHANGE": "變化", "VALUE": "市值", "P&L": "損益", "ALLOCATION": "資產配置",
         "ASSETS": "資產", "ETFs 57%": "ETF 57%", "Stocks 43%": "股票 43%",
-        "Display": "顯示", "Show detail percentage changes": "顯示明細百分比變化", "Performance colors": "漲跌顏色", "Green up / red down": "綠漲紅跌", "Red up / green down": "紅漲綠跌", "Analog mode": "類比模式", "Daily snapshot time": "每日快照時間", "Appearance": "外觀", "System": "跟隨系統", "Light": "淺色", "Dark": "深色",
+        "Display": "顯示", "Show detail percentage changes": "顯示明細百分比變化", "Performance colors": "漲跌顏色", "Green up / red down": "綠漲紅跌", "Red up / green down": "紅漲綠跌", "Analog mode": "類比模式", "Daily snapshot time": "每日快照時間", "Appearance": "外觀", "System": "跟隨系統", "Light": "淺色", "Dark": "深色", "Total Income": "總收入", "Total Expenses": "總支出", "Monthly Profit": "月結餘", "Account Allocation": "帳戶配置", "Account allocation will appear after leaf items are added.": "新增明細項目後，這裡會顯示帳戶配置。", "No items yet. Click + to add one.": "目前沒有項目，請按＋新增。", "Add child": "新增子項目", "Edit": "編輯", "Delete": "刪除", "Add item": "新增項目", "Edit item": "編輯項目", "Item name": "項目名稱", "Destination account (optional)": "轉入帳戶（選填）", "Use existing account": "使用既有帳戶", "No linked account": "不連結帳戶", "Leaf items can share a destination account. Parent items with children are totaled from their children.": "最底層項目可共用轉入帳戶；有子項目的父項目會依子項目加總。",
         "Turn this off to hide month-over-month percentages in asset and liability details.": "關閉後，資產與負債明細將隱藏月增減百分比。",
         "Language": "語言", "English": "英文", "Traditional Chinese": "繁體中文", "Total": "合計",
         "Add Asset": "新增資產", "Asset name": "資產名稱", "Asset Name": "資產名稱",
@@ -645,20 +685,22 @@ struct DashboardView: View {
             SidebarView(selectedPage: $selectedPage)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 240)
         } detail: {
-            DashboardContentView(pageTitle: selectedPage, selectedPage: $selectedPage)
-        }
-        .frame(minWidth: 980, minHeight: 680)
-        .preferredColorScheme(preferredColorScheme)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ZStack(alignment: .topTrailing) {
+                DashboardContentView(pageTitle: selectedPage, selectedPage: $selectedPage)
                 Button {
                     selectedPage = "Help"
                 } label: {
                     Image(systemName: "questionmark.circle")
+                        .font(.title2)
                 }
+                .buttonStyle(.plain)
                 .help("Help")
+                .padding(.top, 14)
+                .padding(.trailing, 20)
             }
         }
+        .frame(minWidth: 980, minHeight: 680)
+        .preferredColorScheme(preferredColorScheme)
         .onAppear {
             hideWindowTitle()
         }
@@ -715,9 +757,10 @@ struct SidebarView: View {
         }
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 14) {
-                SidebarIconButton(systemImage: "gearshape", isSelected: selectedPage == "Settings") {
+                SidebarIconButton(systemImage: "gearshape", isSelected: false) {
                     selectedPage = "Settings"
                 }
+                Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -783,7 +826,8 @@ struct DashboardContentView: View {
     @Binding var selectedPage: String
     @EnvironmentObject private var appModel: AppModel
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
-    @AppStorage("showDetailChanges") private var showDetailChanges = true
+    @AppStorage("showDetailChanges") private var showDetailChanges = false
+    @AppStorage("showDetailChangesInitialized") private var showDetailChangesInitialized = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -817,6 +861,12 @@ struct DashboardContentView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            if !showDetailChangesInitialized {
+                showDetailChanges = false
+                showDetailChangesInitialized = true
+            }
+        }
     }
 }
 
@@ -2777,77 +2827,275 @@ struct ChartPlaceholder: View {
 }
 
 struct IncomeStatementView: View {
-    private let income = StatementSection(title: "Income", rows: [
-        StatementRow(name: "Salary", value: "NTD 45,269", children: [
-            StatementRow(name: "Base Salary", value: "NTD 42,000"),
-            StatementRow(name: "Overtime", value: "NTD 3,269")
-        ]),
-        StatementRow(name: "Bonus", value: "NTD 0"),
-        StatementRow(name: "Side Income", value: "NTD 2,880", children: [
-            StatementRow(name: "Freelance", value: "NTD 2,880"),
-            StatementRow(name: "Other", value: "NTD 0")
-        ])
-    ], total: "NTD 48,149")
+    @EnvironmentObject private var appModel: AppModel
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @State private var showingAdd = false
+    @State private var addingSection = "income"
+    @State private var addingParentID: Int64?
+    @State private var editingItem: DatabaseManager.IncomeStatementItem?
 
-    private let expenses = StatementSection(title: "Expenses", rows: [
-        StatementRow(name: "Student Loan", value: "NTD 4,237", children: [
-            StatementRow(name: "Principal", value: "NTD 3,500"),
-            StatementRow(name: "Interest", value: "NTD 737")
-        ]),
-        StatementRow(name: "Rent", value: "NTD 10,000", children: [
-            StatementRow(name: "Apartment", value: "NTD 10,000")
-        ]),
-        StatementRow(name: "Utilities", value: "NTD 500", children: [
-            StatementRow(name: "Electricity", value: "NTD 300"),
-            StatementRow(name: "Internet", value: "NTD 200")
-        ]),
-        StatementRow(name: "Living Expenses", value: "NTD 6,000", children: [
-            StatementRow(name: "Food", value: "NTD 4,000"),
-            StatementRow(name: "Transportation", value: "NTD 2,000")
-        ])
-    ], total: "NTD 50,826")
+    private let sections = [("income", "Income"), ("expense", "Expenses"), ("savings", "Savings")]
 
-    private let savings = StatementSection(title: "Savings", rows: [
-        StatementRow(name: "Investment", value: "NTD 15,532", children: [
-            StatementRow(name: "Stocks", value: "NTD 8,000"),
-            StatementRow(name: "ETFs", value: "NTD 7,532")
-        ]),
-        StatementRow(name: "Emergency Fund", value: "NTD 12,855", children: [
-            StatementRow(name: "High-yield Savings", value: "NTD 12,855")
-        ]),
-        StatementRow(name: "Cash Reserve", value: "NTD 5,000", children: [
-            StatementRow(name: "Monthly Reserve", value: "NTD 5,000")
-        ])
-    ], total: "NTD 33,387")
+    private func children(of item: DatabaseManager.IncomeStatementItem) -> [DatabaseManager.IncomeStatementItem] {
+        appModel.incomeStatementItems.filter { $0.parentID == item.id }
+    }
+
+    private func value(of item: DatabaseManager.IncomeStatementItem) -> Double {
+        let childItems = children(of: item)
+        return childItems.isEmpty ? item.amount : childItems.reduce(0) { $0 + value(of: $1) }
+    }
+
+    private func total(for section: String) -> Double {
+        appModel.incomeStatementItems
+            .filter { $0.section == section && $0.parentID == nil }
+            .reduce(0) { $0 + value(of: $1) }
+    }
+
+    private var accountTotals: [(String, Double)] {
+        let allocationItems = appModel.incomeStatementItems.filter {
+            ($0.section == "expense" || $0.section == "savings") &&
+            children(of: $0).isEmpty &&
+            !($0.accountName?.isEmpty ?? true)
+        }
+        return Dictionary(grouping: allocationItems, by: { $0.accountName! })
+            .map { account, items in (account, items.reduce(0) { $0 + $1.amount }) }
+            .sorted { $0.1 > $1.1 }
+    }
+
+    @ViewBuilder
+    private func sectionCard(_ section: (String, String)) -> some View {
+        IncomeStatementSectionCard(
+            title: section.1,
+            items: appModel.incomeStatementItems.filter { $0.section == section.0 },
+            value: { value(of: $0) },
+            onAdd: {
+                addingSection = section.0
+                addingParentID = nil
+                showingAdd = true
+            },
+            onAddChild: { item in
+                addingSection = section.0
+                addingParentID = item.id
+                showingAdd = true
+            },
+            onEdit: { editingItem = $0 },
+            onDelete: { appModel.deleteIncomeStatementItem(id: $0.id) }
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 16) {
-                MetricCard(title: "Total Income", value: income.total, change: "+4.2% vs last month")
-                MetricCard(title: "Total Expenses", value: expenses.total, change: "-1.8% vs last month")
-                MetricCard(title: "Monthly Profit", value: "NTD 0", change: "+6.1% vs last month")
+                MetricCard(title: "Total Income", value: ntd(total(for: "income")), change: "0.0% vs last month")
+                MetricCard(title: "Total Expenses", value: ntd(total(for: "expense")), change: "0.0% vs last month")
+                MetricCard(title: "Monthly Profit", value: ntd(total(for: "income") - total(for: "expense")), change: "0.0% vs last month")
             }
             .padding(.horizontal, 24)
 
+            Rectangle()
+                .fill(Color.secondary.opacity(0.28))
+                .frame(height: 1)
+                .padding(.horizontal, 24)
+
             ScrollView {
-                ViewThatFits(in: .horizontal) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack(alignment: .top, spacing: 16) {
-                            StatementCard(section: income)
-                            StatementCard(section: expenses)
-                        }
-                        StatementCard(section: savings)
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .top, spacing: 16) {
+                        sectionCard(sections[0])
+                        sectionCard(sections[1])
                     }
-                    VStack(alignment: .leading, spacing: 16) {
-                        StatementCard(section: income)
-                        StatementCard(section: expenses)
-                        StatementCard(section: savings)
-                    }
+                    sectionCard(sections[2])
+                    AccountAllocationCard(totals: accountTotals)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
         }
+        .onAppear { appModel.refreshIncomeStatementItems() }
+        .sheet(isPresented: $showingAdd) {
+            StatementItemSheet(section: addingSection, parentID: addingParentID)
+        }
+        .sheet(item: $editingItem) { item in
+            StatementItemSheet(item: item)
+        }
+    }
+}
+
+private struct IncomeStatementSectionCard: View {
+    let title: String
+    let items: [DatabaseManager.IncomeStatementItem]
+    let value: (DatabaseManager.IncomeStatementItem) -> Double
+    let onAdd: () -> Void
+    let onAddChild: (DatabaseManager.IncomeStatementItem) -> Void
+    let onEdit: (DatabaseManager.IncomeStatementItem) -> Void
+    let onDelete: (DatabaseManager.IncomeStatementItem) -> Void
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(L10n.text(title, language: appLanguage)).font(.title3.weight(.semibold))
+                Spacer()
+                Button(action: onAdd) { Image(systemName: "plus") }.buttonStyle(.plain)
+            }
+            let roots = items.filter { $0.parentID == nil }
+            if roots.isEmpty {
+                Text(L10n.text("No items yet. Click + to add one.", language: appLanguage))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ForEach(roots) { item in row(item, level: 0) }
+            }
+            Divider()
+            HStack {
+                Text(L10n.text("Total", language: appLanguage)).fontWeight(.semibold)
+                Spacer()
+                Text(ntd(roots.reduce(0) { $0 + value($1) })).fontWeight(.bold)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+    }
+
+    private func row(_ item: DatabaseManager.IncomeStatementItem, level: Int) -> AnyView {
+        let hasChildren = items.contains { $0.parentID == item.id }
+        return AnyView(VStack(alignment: .leading, spacing: 8) {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.name).font(level == 0 ? .headline : .callout)
+                if !hasChildren, let accountName = item.accountName, !accountName.isEmpty {
+                    Text(accountName).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Text(ntd(value(item)))
+                .fontWeight(level == 0 ? .semibold : .regular)
+        }
+        .padding(.leading, CGFloat(level) * 18)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(L10n.text("Add child", language: appLanguage)) { onAddChild(item) }
+            Button(L10n.text("Edit", language: appLanguage)) { onEdit(item) }
+            Divider()
+            Button(L10n.text("Delete", language: appLanguage), role: .destructive) { onDelete(item) }
+        }
+        ForEach(items.filter { $0.parentID == item.id }) { child in
+            row(child, level: level + 1)
+        }
+        })
+    }
+}
+
+private struct AccountAllocationCard: View {
+    let totals: [(String, Double)]
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+
+    var body: some View {
+        let maximum = totals.map(\.1).max() ?? 1
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.text("Account Allocation", language: appLanguage)).font(.title3.weight(.semibold))
+            if totals.isEmpty {
+                Text(L10n.text("Account allocation will appear after leaf items are added.", language: appLanguage))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(totals, id: \.0) { account, amount in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(account)
+                            Spacer()
+                            Text(ntd(amount)).fontWeight(.semibold)
+                        }
+                        GeometryReader { geometry in
+                            Capsule()
+                                .fill(Color.accentColor.opacity(0.72))
+                                .frame(width: max(6, geometry.size.width * amount / maximum), height: 8)
+                        }
+                        .frame(height: 8)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+    }
+}
+
+private struct StatementItemSheet: View {
+    let item: DatabaseManager.IncomeStatementItem?
+    let section: String
+    let parentID: Int64?
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @State private var name: String
+    @State private var amount: String
+    @State private var accountName: String
+    @State private var errorMessage: String?
+
+    init(section: String, parentID: Int64?) {
+        self.item = nil
+        self.section = section
+        self.parentID = parentID
+        _name = State(initialValue: "")
+        _amount = State(initialValue: "0")
+        _accountName = State(initialValue: "")
+    }
+
+    init(item: DatabaseManager.IncomeStatementItem) {
+        self.item = item
+        self.section = item.section
+        self.parentID = item.parentID
+        _name = State(initialValue: item.name)
+        _amount = State(initialValue: String(item.amount))
+        _accountName = State(initialValue: item.accountName ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(L10n.text(item == nil ? "Add item" : "Edit item", language: appLanguage)).font(.title2.weight(.bold))
+            TextField(L10n.text("Item name", language: appLanguage), text: $name).textFieldStyle(.roundedBorder)
+            TextField(L10n.text("Amount (NTD)", language: appLanguage), text: $amount).textFieldStyle(.roundedBorder)
+            TextField(L10n.text("Destination account (optional)", language: appLanguage), text: $accountName)
+                .textFieldStyle(.roundedBorder)
+            if !appModel.statementAccounts.isEmpty {
+                Menu(L10n.text("Use existing account", language: appLanguage)) {
+                    ForEach(appModel.statementAccounts, id: \.self) { existingAccount in
+                        Button(existingAccount) { accountName = existingAccount }
+                    }
+                    Button(L10n.text("No linked account", language: appLanguage)) { accountName = "" }
+                }
+            }
+            Text(L10n.text("Leaf items can share a destination account. Parent items with children are totaled from their children.", language: appLanguage))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button(L10n.text("Cancel", language: appLanguage)) { dismiss() }
+                Button(L10n.text("Save", language: appLanguage)) { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage { Text(errorMessage).font(.caption).foregroundStyle(.red) }
+        }
+        .padding(24)
+        .frame(width: 440)
+    }
+
+    private func save() {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let value = Double(amount), value >= 0 else {
+            errorMessage = "Enter a name and valid amount."
+            return
+        }
+        do {
+            if let item {
+                try appModel.updateIncomeStatementItem(id: item.id, name: name, amount: value, accountName: accountName)
+            } else {
+                try appModel.createIncomeStatementItem(section: section, parentID: parentID, name: name, amount: value, accountName: accountName)
+            }
+            dismiss()
+        } catch { errorMessage = error.localizedDescription }
     }
 }
 
@@ -2912,7 +3160,10 @@ struct SettingsCard: View {
     @AppStorage("performanceColorMode") private var performanceColorMode = "greenUp"
     @AppStorage("appearanceMode") private var appearanceMode = "system"
     @AppStorage("snapshotTime") private var snapshotTime = "23:00"
-    @State private var snapshotDate = Date()
+
+    private var snapshotOptions: [String] {
+        (0..<24).map { String(format: "%02d:00", $0) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -2935,16 +3186,12 @@ struct SettingsCard: View {
             }
             .pickerStyle(.menu)
 
-            DatePicker(
-                L10n.text("Daily snapshot time", language: appLanguage),
-                selection: $snapshotDate,
-                displayedComponents: .hourAndMinute
-            )
-            .onChange(of: snapshotDate) { _, date in
-                let formatter = DateFormatter()
-                formatter.dateFormat = "HH:mm"
-                snapshotTime = formatter.string(from: date)
+            Picker(L10n.text("Daily snapshot time", language: appLanguage), selection: $snapshotTime) {
+                ForEach(snapshotOptions, id: \.self) { time in
+                    Text(time).tag(time)
+                }
             }
+            .pickerStyle(.menu)
 
             Picker(L10n.text("Appearance", language: appLanguage), selection: $appearanceMode) {
                 Text(L10n.text("System", language: appLanguage)).tag("system")
@@ -2957,11 +3204,6 @@ struct SettingsCard: View {
         .padding(20)
         .background(.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
-        .onAppear {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            snapshotDate = formatter.date(from: snapshotTime) ?? Date()
-        }
     }
 }
 
@@ -2984,11 +3226,12 @@ struct RecurringInvestmentView: View {
     @EnvironmentObject private var appModel: AppModel
     @Binding var selectedPage: String
     @State private var showingAddRule = false
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Recurring Rules")
+                Text(L10n.text("Recurring Rules", language: appLanguage))
                     .font(.title2.weight(.semibold))
                 Spacer()
                 Button(action: { showingAddRule = true }) {
@@ -3041,7 +3284,7 @@ struct RecurringInvestmentView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
                 Text(money(rule.plannedAmount, currency: rule.currency)).font(.headline)
-                Text("Click to view purchases").font(.caption).foregroundStyle(.secondary)
+                Text(L10n.text("Click to view investments", language: appLanguage)).font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 18)
