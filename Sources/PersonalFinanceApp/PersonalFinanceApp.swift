@@ -784,7 +784,6 @@ private struct CompanyLogoView: View {
     let symbol: String
     let name: String
     @StateObject private var loader: CompanyLogoLoader
-    @State private var isHovering = false
 
     init(symbol: String, name: String) {
         self.symbol = symbol
@@ -809,18 +808,16 @@ private struct CompanyLogoView: View {
             }
         }
         .frame(width: 48, height: 48)
-        .background(
-            loader.image == nil
-                ? FinTrackTheme.logoFallbackBackground
-                : (isHovering ? FinTrackTheme.logoContainerHover : FinTrackTheme.logoContainerBackground),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(loader.image == nil ? FinTrackTheme.logoFallbackBorder : FinTrackTheme.logoContainerBorder, lineWidth: 1)
+        .background {
+            if loader.image == nil {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(FinTrackTheme.logoFallbackBackground)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(FinTrackTheme.logoFallbackBorder, lineWidth: 1)
+                    }
+            }
         }
-        .onHover { isHovering = $0 }
         .accessibilityHidden(true)
         .task(id: symbol) {
             await loader.load()
@@ -2717,9 +2714,18 @@ struct PositionsCard: View {
             HStack(spacing: 12) {
                 CompanyLogoView(symbol: holding.symbol, name: holding.securityName)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(holding.securityName).font(.headline).lineLimit(1)
-                    Text("\(holding.quantity) \(L10n.text("shares", language: appLanguage)) · \(holding.symbol)")
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(holding.securityName)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 4) {
+                        Text("\(holding.quantity) \(L10n.text("shares", language: appLanguage))")
+                        Text("·")
+                        Text(holding.symbol)
+                            .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
