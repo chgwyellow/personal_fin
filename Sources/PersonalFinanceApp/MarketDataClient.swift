@@ -34,6 +34,7 @@ struct MarketDataClient {
             let regularMarketPrice: Double?
             let currency: String?
             let regularMarketPreviousClose: Double?
+            let previousClose: Double?
         }
     }
 
@@ -71,7 +72,7 @@ struct MarketDataClient {
     /// Fetches one current quote for a selected symbol.
     func fetchQuote(symbol: String) async throws -> Quote? {
         let escapedSymbol = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
-        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(escapedSymbol)?range=1d&interval=1d") else {
+        guard let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(escapedSymbol)?range=5d&interval=1d") else {
             throw ClientError.invalidResponse
         }
         let (data, response) = try await URLSession.shared.data(from: url)
@@ -84,7 +85,7 @@ struct MarketDataClient {
         return Quote(
             price: price,
             currency: meta.currency ?? "USD",
-            previousClose: meta.regularMarketPreviousClose
+            previousClose: meta.regularMarketPreviousClose ?? meta.previousClose
         )
     }
 

@@ -50,7 +50,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var foreignExchangeRates: [String: Double] = [:]
     @Published private(set) var foreignExchangeRatesUpdatedAt: Date?
     @Published private(set) var todayPLNTD: Double?
+    @Published private(set) var isRefreshingMarketData = false
     @Published private(set) var snapshots: [DatabaseManager.Snapshot] = []
+    @Published var snapshotError: String?
     private let databaseManager: DatabaseManager?
     private let marketDataClient = MarketDataClient()
 
@@ -368,6 +370,8 @@ final class AppModel: ObservableObject {
 
     func refreshMarketData() async {
         guard let databaseManager else { return }
+        isRefreshingMarketData = true
+        defer { isRefreshingMarketData = false }
         let records = holdingRecords
         let formatter = ISO8601DateFormatter()
         let timestamp = formatter.string(from: Date())
@@ -415,9 +419,10 @@ final class AppModel: ObservableObject {
             if holding.currency == "NTD" {
                 rate = 1
             } else {
-                rate = (try? databaseManager.latestExchangeRate(base: holding.currency, quote: "NTD")) ?? 0
-            }
-            todayTotal += (quote.price - previousClose) * holding.shares * rate
+                    rate = (try? databaseManager.latestExchangeRate(base: holding.currency, quote: "NTD")) ?? 0
+                }
+                guard rate > 0 else { continue }
+                todayTotal += (quote.price - previousClose) * holding.shares * rate
             hasTodayData = true
         }
         todayPLNTD = hasTodayData ? todayTotal : nil
@@ -438,10 +443,15 @@ final class AppModel: ObservableObject {
         guard let hour = now.hour, let minute = now.minute,
               hour > parts[0] || (hour == parts[0] && minute >= parts[1]) else { return }
         let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
+        let snapshotDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let dateString = formatter.string(from: snapshotDate)
+        guard !snapshots.contains(where: { $0.date == dateString }) else { return }
         do {
             try databaseManager.saveSnapshot(
-                date: formatter.string(from: Date()),
+                date: dateString,
                 assets: assetTotals,
                 liabilities: liabilityTotals
             )
@@ -456,8 +466,12 @@ final class AppModel: ObservableObject {
         snapshots = (try? databaseManager.listSnapshots()) ?? []
     }
 
-    func saveManualSnapshot() {
-        guard let databaseManager else { return }
+    @discardableResult
+    func saveManualSnapshot() -> Bool {
+        guard let databaseManager else {
+            snapshotError = "Snapshot storage is unavailable."
+            return false
+        }
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -469,8 +483,12 @@ final class AppModel: ObservableObject {
                 liabilities: liabilityTotals
             )
             refreshSnapshots()
+            snapshotError = nil
+            return true
         } catch {
             NSLog("FinTrack manual snapshot save failed: %@", error.localizedDescription)
+            snapshotError = error.localizedDescription
+            return false
         }
     }
 
@@ -716,8 +734,13 @@ private enum SnapshotBackgroundAgent {
             formatter.calendar = Calendar(identifier: .gregorian)
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = "yyyy-MM-dd"
+            let snapshotDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+            let dateString = formatter.string(from: snapshotDate)
+            guard !(try databaseManager.listSnapshots()).contains(where: { $0.date == dateString }) else {
+                return
+            }
             try databaseManager.saveSnapshot(
-                date: formatter.string(from: Date()),
+                date: dateString,
                 assets: try databaseManager.assetTotals(),
                 liabilities: try databaseManager.liabilityTotals()
             )
@@ -979,7 +1002,7 @@ enum L10n {
         "Add foreign-currency transaction": "新增外幣交易", "Transaction type": "交易類型", "Exchange": "換匯", "Exchange direction": "換匯方向", "Buy foreign currency": "買入外幣", "Sell foreign currency back to NTD": "賣出外幣換回新台幣", "Other purpose": "其他用途", "Original currency": "原幣別", "Foreign amount": "原幣金額", "Foreign amount (+ income / - expense)": "原幣金額（收入＋／支出－）", "NTD amount": "新台幣金額", "Rate (NTD per unit)": "匯率（每單位新台幣）", "NTD amount (exchange only)": "新台幣金額（僅換匯）", "Rate (NTD per unit, exchange only)": "匯率（每單位新台幣，僅換匯）", "Purpose": "用途", "Date": "日期", "Exchange transactions require NTD amount and rate.": "換匯交易需要填寫新台幣金額與匯率。", "Other transactions only change the foreign-currency balance; NTD amount and rate are not required.": "其他交易只會變更外幣餘額，不需要填寫新台幣金額與匯率。", "Enter a currency and positive foreign amount.": "請輸入幣別與正的原幣金額。", "Enter a purpose, currency, and positive foreign amount.": "請輸入用途、幣別與正的原幣金額。", "Enter a valid NTD amount and rate for an exchange.": "請輸入有效的新台幣金額與匯率。", "Use a negative foreign amount for investments, spending, or exchanging foreign currency back to NTD. Leave NTD and rate blank for non-exchange transactions.": "投資、支出或換回新台幣時，原幣金額請填負值；非換匯交易的新台幣與匯率請留空。", "Enter a purpose, currency, and non-zero foreign amount.": "請輸入用途、幣別與非零的原幣金額。", "Enter both NTD amount and rate, or leave both blank.": "請同時輸入新台幣金額與匯率，或兩者都留空。", "NTD amount and rate must be greater than zero.": "新台幣金額與匯率必須大於零。",
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
         "No recurring investments": "目前沒有定期定額", "No recurring rules": "目前沒有定期定額規則", "Add a rule to plan your recurring investments.": "新增規則以規劃定期定額投資。",
-        "No market prices": "尚無市場價格", "NTD converted": "已換算新台幣", "holdings": "筆持股", "shares": "股", "purchases": "筆投資", "monthly": "每月", "day": "日", "currency": "幣別", "currencies": "種幣別", "No foreign-currency balances recorded.": "目前沒有外幣餘額。", "No foreign-currency transactions recorded.": "目前沒有外幣交易紀錄。", "MARKET VALUE": "目前市值",
+        "No market prices": "尚無市場價格", "Updating market prices": "正在更新市場價格", "NTD converted": "已換算新台幣", "holdings": "筆持股", "shares": "股", "purchases": "筆投資", "monthly": "每月", "day": "日", "currency": "幣別", "currencies": "種幣別", "No foreign-currency balances recorded.": "目前沒有外幣餘額。", "No foreign-currency transactions recorded.": "目前沒有外幣交易紀錄。", "MARKET VALUE": "目前市值",
         "TOTAL CONTRIBUTED": "累計投入", "TOTAL SHARES": "總股數", "LAST PURCHASE": "最近投資", "SCHEDULES": "排程", "PURCHASES": "投資紀錄", "No purchases recorded. Click + to add the actual transaction.": "尚無投資紀錄，請按＋新增實際交易。",
         "No holdings yet. Click Add to create one.": "目前沒有持股，請按新增建立。",
         "Allocation will appear after holdings and market prices are available.": "建立持股並取得市場價格後，這裡會顯示資產配置。",
@@ -2814,10 +2837,12 @@ struct PortfolioView: View {
                 )
                 PortfolioMetricCard(
                     title: "TODAY",
-                    value: appModel.todayPLNTD.map(signedNTD) ?? "—",
-                    detail: appModel.todayPLNTD == nil
-                        ? L10n.text("No market prices", language: appLanguage)
-                        : L10n.text("vs previous close", language: appLanguage),
+                    value: appModel.todayPLNTD.map(signedNTD) ?? (appModel.isRefreshingMarketData ? "…" : "—"),
+                    detail: appModel.isRefreshingMarketData
+                        ? L10n.text("Updating market prices", language: appLanguage)
+                        : (appModel.todayPLNTD == nil
+                            ? L10n.text("No market prices", language: appLanguage)
+                            : L10n.text("vs previous close", language: appLanguage)),
                     tint: appModel.todayPLNTD.map { performanceColor(isNegative: $0 < 0, mode: performanceColorMode) } ?? .primary,
                     height: 100
                 )
@@ -3738,58 +3763,206 @@ struct ChartPlaceholder: View {
 struct NetWorthHistoryCard: View {
     @EnvironmentObject private var appModel: AppModel
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @State private var didSaveSnapshot = false
+    @State private var selectedDate: Date?
+    @State private var historyRange: HistoryRange = .threeMonths
+
+    private enum HistoryRange: String, CaseIterable {
+        case oneMonth
+        case threeMonths
+        case sixMonths
+        case oneYear
+        case all
+    }
+
+    private var isChinese: Bool {
+        appLanguage == AppLanguage.traditionalChinese.rawValue
+    }
+
+    private var allChartSnapshots: [(snapshot: DatabaseManager.Snapshot, date: Date)] {
+        appModel.snapshots.compactMap { snapshot in
+            guard let date = netWorthSnapshotDate(snapshot.date) else { return nil }
+            return (snapshot, date)
+        }
+    }
+
+    private var chartSnapshots: [(snapshot: DatabaseManager.Snapshot, date: Date)] {
+        guard historyRange != .all, let latestDate = allChartSnapshots.last?.date else {
+            return allChartSnapshots
+        }
+        let months: Int
+        switch historyRange {
+        case .oneMonth: months = 1
+        case .threeMonths: months = 3
+        case .sixMonths: months = 6
+        case .oneYear: months = 12
+        case .all: months = 0
+        }
+        let cutoff = Calendar.current.date(byAdding: .month, value: -months, to: latestDate) ?? latestDate
+        let filtered = allChartSnapshots.filter { $0.date >= cutoff }
+        // Keep the latest point visible even when the selected range has no data.
+        return filtered.isEmpty ? Array(allChartSnapshots.suffix(1)) : filtered
+    }
+
+    private var historyRangeLabel: String {
+        switch historyRange {
+        case .oneMonth: return isChinese ? "1 個月" : "1M"
+        case .threeMonths: return isChinese ? "3 個月" : "3M"
+        case .sixMonths: return isChinese ? "6 個月" : "6M"
+        case .oneYear: return isChinese ? "1 年" : "1Y"
+        case .all: return isChinese ? "全部" : "All"
+        }
+    }
+
+    private var selectedSnapshot: (snapshot: DatabaseManager.Snapshot, date: Date)? {
+        guard let selectedDate, !chartSnapshots.isEmpty else { return nil }
+        return chartSnapshots.min {
+            abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate))
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(alignment: .top) {
                 Text(L10n.text("Net Worth History", language: appLanguage))
                     .font(.title3.weight(.semibold))
-                Spacer()
-                Button {
-                    appModel.saveManualSnapshot()
+                Spacer(minLength: 12)
+                Menu {
+                    ForEach(HistoryRange.allCases, id: \.self) { range in
+                        Button {
+                            historyRange = range
+                            selectedDate = nil
+                        } label: {
+                            Text(historyRangeTitle(range))
+                        }
+                    }
                 } label: {
+                    Text(historyRangeLabel)
+                        .foregroundStyle(FinTrackTheme.textSecondary)
+                }
+                .menuStyle(.borderlessButton)
+                .help(isChinese ? "選擇圖表時間範圍" : "Choose chart time range")
+                Button(action: createSnapshot) {
                     Label(
-                        appLanguage == AppLanguage.traditionalChinese.rawValue ? "建立快照" : "Snapshot",
-                        systemImage: "camera"
+                        didSaveSnapshot ? (isChinese ? "已儲存" : "Saved") : (isChinese ? "建立快照" : "Snapshot"),
+                        systemImage: didSaveSnapshot ? "checkmark.circle" : "plus.circle"
                     )
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderless)
+                .foregroundStyle(FinTrackTheme.primary)
+                .accessibilityLabel(isChinese ? "建立淨值快照" : "Create net worth snapshot")
             }
 
             if appModel.snapshots.isEmpty {
-                Text(appLanguage == AppLanguage.traditionalChinese.rawValue ? "尚無快照，請按右上角建立第一筆。" : "No snapshots yet. Click Snapshot to record the first one.")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 150, alignment: .center)
+                VStack(spacing: 8) {
+                    Image(systemName: "chart.xyaxis.line")
+                        .font(.system(size: 28))
+                        .foregroundStyle(FinTrackTheme.primary)
+                    Text(isChinese ? "尚無淨值歷史" : "No net worth history yet")
+                        .font(.headline)
+                    Text(isChinese ? "建立快照，開始追蹤淨值的變化。" : "Create a snapshot to start tracking your net worth over time.")
+                        .font(.callout)
+                        .foregroundStyle(FinTrackTheme.textSecondary)
+                    Button(action: createSnapshot) {
+                        Label(isChinese ? "建立第一筆快照" : "Create your first snapshot", systemImage: "plus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(FinTrackTheme.primary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 190)
             } else {
-                Chart(appModel.snapshots) { snapshot in
+                Chart(chartSnapshots, id: \.snapshot.id) { item in
+                    if chartSnapshots.count >= 2 {
                     LineMark(
-                        x: .value("Date", snapshot.date),
-                        y: .value("Net Worth", snapshot.netWorth)
+                        x: .value("Date", item.date),
+                        y: .value("Net Worth", item.snapshot.netWorth)
                     )
                     .foregroundStyle(FinTrackTheme.primary)
                     .interpolationMethod(.catmullRom)
+                    }
 
                     PointMark(
-                        x: .value("Date", snapshot.date),
-                        y: .value("Net Worth", snapshot.netWorth)
+                        x: .value("Date", item.date),
+                        y: .value("Net Worth", item.snapshot.netWorth)
                     )
                     .foregroundStyle(FinTrackTheme.primary)
+                    .annotation(position: .top, spacing: 8) {
+                        if chartSnapshots.count == 1 {
+                            Text(snapshotDateText(item.date, includeYear: false))
+                                .font(.caption)
+                                .foregroundStyle(FinTrackTheme.textSecondary)
+                        }
+                    }
                 }
+                .chartXScale(domain: chartXDomain)
+                .chartYScale(domain: chartYDomain)
                 .chartYAxis {
                     AxisMarks(position: .leading) { value in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                             .foregroundStyle(FinTrackTheme.divider)
                         AxisValueLabel {
                             if let amount = value.as(Double.self) {
-                                Text(ntd(amount))
+                                Text(compactNTD(amount, includeCurrency: false))
                             }
                         }
                     }
                 }
                 .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 5))
+                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                        AxisValueLabel {
+                            if let date = value.as(Date.self) {
+                                Text(snapshotDateText(date, includeYear: chartSpansMultipleYears))
+                            }
+                        }
+                    }
                 }
-                .frame(height: 220)
+                .chartOverlay { proxy in
+                    GeometryReader { geometry in
+                        if let plotFrameAnchor = proxy.plotFrame {
+                            let plotFrame = geometry[plotFrameAnchor]
+                            ZStack {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onContinuousHover { phase in
+                                    switch phase {
+                                    case .active(let location):
+                                        let point = CGPoint(
+                                            x: location.x - plotFrame.origin.x,
+                                            y: location.y - plotFrame.origin.y
+                                        )
+                                        let nearest = chartSnapshots.compactMap { item -> (date: Date, distance: CGFloat)? in
+                                            guard let x = proxy.position(forX: item.date),
+                                                  let y = proxy.position(forY: item.snapshot.netWorth) else { return nil }
+                                            let distance = hypot(point.x - x, point.y - y)
+                                            return (item.date, distance)
+                                        }.min { $0.distance < $1.distance }
+                                        // Keep the hit target close to the visible point so
+                                        // moving through the chart does not select a point.
+                                        selectedDate = nearest.flatMap { $0.distance <= 10 ? $0.date : nil }
+                                    case .ended:
+                                        selectedDate = nil
+                                    }
+                                }
+
+                            if let selectedSnapshot,
+                               let pointX = proxy.position(forX: selectedSnapshot.date),
+                               let pointY = proxy.position(forY: selectedSnapshot.snapshot.netWorth) {
+                                NetWorthHoverCallout(
+                                    value: ntd(selectedSnapshot.snapshot.netWorth),
+                                    title: isChinese ? "淨值" : "Net Worth"
+                                )
+                                .position(
+                                    x: min(max(plotFrame.minX + pointX, plotFrame.minX + 90), plotFrame.maxX - 90),
+                                    y: min(pointY + plotFrame.minY + 52, plotFrame.maxY - 42)
+                                )
+                            }
+                            }
+                        }
+                    }
+                }
+                .historyChartScrolling(isEnabled: true, initialDate: chartSnapshots.last?.date)
+                .frame(height: 240)
+                .id(appModel.snapshots.last?.id ?? "empty")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -3799,7 +3972,158 @@ struct NetWorthHistoryCard: View {
         .onAppear {
             appModel.refreshSnapshots()
         }
+        .alert(isChinese ? "建立快照失敗" : "Snapshot Failed", isPresented: Binding(
+            get: { appModel.snapshotError != nil },
+            set: { if !$0 { appModel.snapshotError = nil } }
+        )) {
+            Button(isChinese ? "好" : "OK") { appModel.snapshotError = nil }
+        } message: {
+            Text(appModel.snapshotError ?? (isChinese ? "無法儲存快照。" : "The snapshot could not be saved."))
+        }
     }
+
+    private var chartYDomain: ClosedRange<Double> {
+        let values = chartSnapshots.map { $0.snapshot.netWorth }
+        let minimum = values.min() ?? 0
+        let maximum = values.max() ?? 0
+        let dataSpan = maximum - minimum
+        // Keep the observations near the visual centre. A zero baseline is not
+        // useful here because it pushes a small history to the top of the plot.
+        let padding = max(dataSpan * 0.35, max(abs(minimum), abs(maximum), 1) * 0.15)
+        let lower = minimum - padding
+        let upper = max(maximum + padding, lower + 1)
+        return lower...upper
+    }
+
+    private var chartXDomain: ClosedRange<Date> {
+        guard let first = chartSnapshots.first?.date,
+              let last = chartSnapshots.last?.date else {
+            let now = Date()
+            return now.addingTimeInterval(-5 * 24 * 60 * 60)...now.addingTimeInterval(5 * 24 * 60 * 60)
+        }
+        let padding = max(2 * 24 * 60 * 60, min(5 * 24 * 60 * 60, last.timeIntervalSince(first) * 0.12))
+        return first.addingTimeInterval(-padding)...last.addingTimeInterval(padding)
+    }
+
+    private var chartSpansMultipleYears: Bool {
+        guard let first = chartSnapshots.first?.date, let last = chartSnapshots.last?.date else { return false }
+        return Calendar.current.component(.year, from: first) != Calendar.current.component(.year, from: last)
+    }
+
+    private func createSnapshot() {
+        guard appModel.saveManualSnapshot() else { return }
+        withAnimation(.easeOut(duration: 0.15)) { didSaveSnapshot = true }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            withAnimation(.easeOut(duration: 0.15)) { didSaveSnapshot = false }
+        }
+    }
+
+    private func historyRangeTitle(_ range: HistoryRange) -> String {
+        switch range {
+        case .oneMonth: return isChinese ? "最近 1 個月" : "Last month"
+        case .threeMonths: return isChinese ? "最近 3 個月" : "Last 3 months"
+        case .sixMonths: return isChinese ? "最近 6 個月" : "Last 6 months"
+        case .oneYear: return isChinese ? "最近 1 年" : "Last year"
+        case .all: return isChinese ? "全部歷史" : "All history"
+        }
+    }
+}
+
+private struct NetWorthHoverCallout: View {
+    let value: String
+    let title: String
+
+    var body: some View {
+        VStack(spacing: -1) {
+            Triangle()
+                .fill(FinTrackTheme.cardBackground)
+                .frame(width: 14, height: 7)
+                .overlay {
+                    Triangle()
+                        .stroke(FinTrackTheme.border, lineWidth: 1)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(FinTrackTheme.textSecondary)
+                Text(value)
+                    .font(.callout.weight(.semibold))
+            }
+            .padding(8)
+            .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(FinTrackTheme.border))
+        }
+        .fixedSize()
+        .allowsHitTesting(false)
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func historyChartScrolling(isEnabled: Bool, initialDate: Date?) -> some View {
+        if isEnabled, let initialDate {
+            self
+                .chartScrollableAxes(.horizontal)
+                .chartXVisibleDomain(length: 10 * 24 * 60 * 60)
+                .chartScrollPosition(initialX: initialDate)
+        } else {
+            self
+        }
+    }
+}
+
+private func netWorthSnapshotDate(_ value: String) -> Date? {
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter.date(from: value)
+}
+
+private func snapshotDateText(_ date: Date, includeYear: Bool) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale.current
+    formatter.dateStyle = includeYear ? .medium : .medium
+    formatter.timeStyle = .none
+    if !includeYear { formatter.setLocalizedDateFormatFromTemplate("MMM d") }
+    return formatter.string(from: date)
+}
+
+private func compactNTD(_ value: Double, includeCurrency: Bool = true) -> String {
+    let absolute = abs(value)
+    let suffix: String
+    let scaled: Double
+    if absolute >= 1_000_000_000 {
+        scaled = value / 1_000_000_000
+        suffix = "B"
+    } else if absolute >= 1_000_000 {
+        scaled = value / 1_000_000
+        suffix = "M"
+    } else if absolute >= 1_000 {
+        scaled = value / 1_000
+        suffix = "K"
+    } else {
+        scaled = value
+        suffix = ""
+    }
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.maximumFractionDigits = suffix.isEmpty ? 0 : 2
+    formatter.minimumFractionDigits = 0
+    let number = formatter.string(from: NSNumber(value: scaled)) ?? "0"
+    return "\(includeCurrency ? "NTD " : "")\(number)\(suffix)"
 }
 
 struct IncomeStatementView: View {
@@ -4486,6 +4810,12 @@ struct HelpView: View {
             HelpSectionLabel(text: L10n.text("CHANGES OVER TIME", language: appLanguage))
             HelpDefinitionSection(rows: [
                 (L10n.text("Monthly Change", language: appLanguage), L10n.text("Compares the current value with the previous month. You can hide these percentages in Settings.", language: appLanguage))
+            ])
+
+            HelpSectionLabel(text: helpText("NET WORTH HISTORY", "淨值歷史"))
+            HelpDefinitionSection(rows: [
+                (helpText("Snapshot", "快照"), helpText("Records your current net worth as a historical data point.", "將目前淨值記錄成一筆歷史資料。")),
+                (helpText("Same-day snapshots", "同日快照"), helpText("Creating more than one snapshot on the same day does not create multiple records. The latest snapshot replaces that day's data.", "同一天建立多次快照不會產生多筆資料，最新的快照會覆蓋當天資料。"))
             ])
 
             HelpSectionLabel(text: L10n.text("ADDING INFORMATION", language: appLanguage))
