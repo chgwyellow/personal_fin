@@ -2679,11 +2679,11 @@ struct PositionsCard: View {
                 }
                 .buttonStyle(.plain)
                 Text(L10n.text("LAST", language: appLanguage))
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(width: 96, alignment: .trailing)
                 Text(L10n.text("VALUE", language: appLanguage))
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(width: 112, alignment: .trailing)
                 Text(L10n.text("P&L", language: appLanguage))
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(width: 132, alignment: .trailing)
             }
             .font(.caption.weight(.bold))
             .foregroundStyle(.secondary)
@@ -2716,10 +2716,12 @@ struct PositionsCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(holding.securityName)
                         .font(.headline)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     HStack(spacing: 4) {
                         Text("\(holding.quantity) \(L10n.text("shares", language: appLanguage))")
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                         Text("·")
                         Text(holding.symbol)
                             .fixedSize(horizontal: true, vertical: false)
@@ -2731,14 +2733,14 @@ struct PositionsCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(holding.price).font(.headline)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .frame(width: 96, alignment: .trailing)
             Text(holding.value).font(.headline)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .frame(width: 112, alignment: .trailing)
             VStack(alignment: .trailing, spacing: 3) {
                 Text(holding.totalPL).font(.headline).foregroundStyle(performanceColor(isNegative: holding.isNegative, mode: performanceColorMode))
                 Text(holding.totalRate).font(.caption).foregroundStyle(performanceColor(isNegative: holding.isNegative, mode: performanceColorMode))
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .frame(width: 132, alignment: .trailing)
         }
         .padding(.horizontal, 20).padding(.vertical, 8)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 1) }
