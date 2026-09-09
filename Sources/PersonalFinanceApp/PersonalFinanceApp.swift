@@ -42,6 +42,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var holdingRecords: [DatabaseManager.HoldingRecord] = []
     @Published private(set) var recurringRecords: [DatabaseManager.RecurringRecord] = []
     @Published private(set) var dividendRecords: [DatabaseManager.DividendRecord] = []
+    @Published private(set) var foreignExchangeRates: [String: Double] = [:]
+    @Published private(set) var foreignExchangeRatesUpdatedAt: Date?
     private let databaseManager: DatabaseManager?
     private let marketDataClient = MarketDataClient()
 
@@ -280,7 +282,7 @@ final class AppModel: ObservableObject {
             }
         }
 
-        for currency in Set(records.map(\.currency)).filter({ $0 != "NTD" }) {
+        for currency in Set((records.map(\.currency) + assets.map(\.currency))).filter({ $0 != "NTD" }) {
             do {
                 if let rate = try await marketDataClient.fetchExchangeRate(baseCurrency: currency) {
                     try databaseManager.insertExchangeRate(
@@ -300,6 +302,35 @@ final class AppModel: ObservableObject {
         refreshHoldings()
         refreshPortfolioTotals()
         refreshAllocations()
+    }
+
+    func refreshForeignExchangeRates() async {
+        guard let databaseManager else { return }
+        let currencies = Set(assets.map(\.currency)).filter { $0 != "NTD" }
+        var refreshedRates: [String: Double] = [:]
+
+        for currency in currencies {
+            do {
+                if let rate = try await marketDataClient.fetchExchangeRate(baseCurrency: currency) {
+                    try databaseManager.insertExchangeRate(
+                        base: currency,
+                        quote: "NTD",
+                        rate: rate,
+                        observedAt: ISO8601DateFormatter().string(from: Date()),
+                        source: "ExchangeRate-API"
+                    )
+                    refreshedRates[currency] = rate
+                }
+            } catch {
+                NSLog("FinTrack foreign-currency refresh failed for %@: %@", currency, error.localizedDescription)
+                if let cached = try? databaseManager.latestExchangeRate(base: currency, quote: "NTD") {
+                    refreshedRates[currency] = cached
+                }
+            }
+        }
+
+        foreignExchangeRates = refreshedRates
+        foreignExchangeRatesUpdatedAt = Date()
     }
 
     func refreshPortfolioTotals() {
@@ -509,6 +540,9 @@ enum L10n {
     private static let traditionalChinese: [String: String] = [
         "Overview": "總覽", "Income Statement": "損益表", "Portfolio": "投資組合",
         "Recurring Investment": "定期定額", "Foreign Currency": "外幣", "Stock": "股票",
+        "Total NTD Equivalent": "新台幣等價總額", "Currencies Held": "持有幣別", "Rates Updated": "匯率更新", "Latest Rate": "最新匯率",
+        "live exchange rates": "即時匯率", "ExchangeRate-API": "ExchangeRate-API",
+        "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價",
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
         "No recurring investments": "目前沒有定期定額",
         "No market prices": "尚無市場價格", "NTD converted": "已換算新台幣", "holdings": "筆持股", "shares": "股", "MARKET VALUE": "目前市值",
@@ -583,7 +617,6 @@ struct SidebarView: View {
     @EnvironmentObject private var appModel: AppModel
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @State private var recurringExpanded = false
-    @State private var currencyExpanded = false
 
     var body: some View {
         List(selection: $selectedPage) {
@@ -606,11 +639,7 @@ struct SidebarView: View {
                     }
                 }
 
-                expandablePage("Foreign Currency", systemImage: "globe.americas.fill", isExpanded: $currencyExpanded)
-                if currencyExpanded {
-                    page("USD", systemImage: "dollarsign.circle", isChild: true)
-                    page("JPY", systemImage: "yensign.circle", isChild: true)
-                }
+                page("Foreign Currency", systemImage: "globe.americas.fill")
             }
 
         }
@@ -701,8 +730,8 @@ struct DashboardContentView: View {
     let pageTitle: String
     @Binding var selectedPage: String
     @EnvironmentObject private var appModel: AppModel
-    @AppStorage("showDetailChanges") private var showDetailChanges = true
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @AppStorage("showDetailChanges") private var showDetailChanges = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -718,6 +747,8 @@ struct DashboardContentView: View {
                 DividendManagementView()
             } else if pageTitle == "Recurring Investment" {
                 RecurringInvestmentView(selectedPage: $selectedPage)
+            } else if pageTitle == "Foreign Currency" {
+                ForeignCurrencyView()
             } else if let recurring = appModel.recurringRecords.first(where: { $0.securityName == pageTitle }) {
                 RecurringHoldingDetailView(rule: recurring)
             } else if pageTitle == "Income Statement" {
@@ -733,6 +764,205 @@ struct DashboardContentView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
+}
+
+struct ForeignCurrencyView: View {
+    @EnvironmentObject private var appModel: AppModel
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @State private var showingAdd = false
+
+    private var summaries: [ForeignCurrencySummary] {
+        let grouped = Dictionary(grouping: appModel.assets.filter { $0.currency != "NTD" }, by: \.currency)
+        return grouped.map { currency, assets in
+            let amount = assets.reduce(0) { $0 + $1.value }
+            let rate = appModel.foreignExchangeRates[currency]
+            let ntdValue = rate.map { amount * $0 } ?? assets.reduce(0) { $0 + $1.ntdValue }
+            return ForeignCurrencySummary(
+                currency: currency,
+                amount: amount,
+                ntdValue: ntdValue,
+                rate: rate ?? (amount > 0 ? ntdValue / amount : nil)
+            )
+        }
+        .sorted { $0.currency < $1.currency }
+    }
+
+    private var lastUpdatedText: String {
+        guard let date = appModel.foreignExchangeRatesUpdatedAt else { return "—" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: appLanguage == AppLanguage.traditionalChinese.rawValue ? "zh_TW" : "en_US")
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+
+    private var latestRateText: String {
+        guard let summary = summaries.first(where: { $0.rate != nil }), let rate = summary.rate else { return "—" }
+        return "NTD " + String(format: "%.4f", rate)
+    }
+
+    var body: some View {
+        let totalNTD = summaries.reduce(0) { $0 + $1.ntdValue }
+        let currencyCount = summaries.count
+
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
+                    PortfolioMetricCard(
+                        title: "Total NTD Equivalent",
+                        value: ntd(totalNTD),
+                        detail: "converted from foreign-currency balances",
+                        tint: .primary
+                    )
+                    PortfolioMetricCard(
+                        title: "Currencies Held",
+                        value: "\(currencyCount)",
+                        detail: currencyCount == 1 ? "currency" : "currencies",
+                        tint: .primary
+                    )
+                    PortfolioMetricCard(
+                        title: "Latest Rate",
+                        value: latestRateText,
+                        detail: lastUpdatedText == "—" ? "live exchange rates" : "updated \(lastUpdatedText)",
+                        tint: .primary
+                    )
+                }
+
+                HStack {
+                    Spacer()
+                    Button(action: { showingAdd = true }) {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.plain)
+                    .font(.title3.weight(.semibold))
+                }
+
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.28))
+                    .frame(height: 1)
+                    .padding(.vertical, 4)
+
+                VStack(spacing: 0) {
+                    HStack(spacing: 16) {
+                        Text("CURRENCY").frame(maxWidth: .infinity, alignment: .leading)
+                        Text(L10n.text("BALANCE", language: appLanguage)).frame(width: 150, alignment: .trailing)
+                        Text(L10n.text("RATE", language: appLanguage)).frame(width: 150, alignment: .trailing)
+                        Text(L10n.text("NTD VALUE", language: appLanguage)).frame(width: 170, alignment: .trailing)
+                    }
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 40)
+                    .padding(.bottom, 10)
+
+                    if summaries.isEmpty {
+                        Text("No foreign-currency balances recorded.")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 180)
+                    } else {
+                        ForEach(summaries) { summary in
+                            HStack(spacing: 16) {
+                                Text(summary.currency)
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Text(money(summary.amount, currency: summary.currency))
+                                    .frame(width: 150, alignment: .trailing)
+                                Text(summary.rate.map { String(format: "NTD %.4f", $0) } ?? "—")
+                                    .frame(width: 150, alignment: .trailing)
+                                Text(ntd(summary.ntdValue))
+                                    .font(.headline)
+                                    .frame(width: 170, alignment: .trailing)
+                            }
+                            .padding(.horizontal, 40)
+                            .padding(.vertical, 14)
+                        }
+                    }
+                }
+                .background(.background, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+        }
+        .task {
+            await appModel.refreshForeignExchangeRates()
+        }
+        .sheet(isPresented: $showingAdd) {
+            AddForeignCurrencySheet()
+        }
+    }
+}
+
+private struct AddForeignCurrencySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+    @State private var currency = ""
+    @State private var balance = ""
+    @State private var averageRate = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add Foreign Currency")
+                .font(.title2.weight(.bold))
+            TextField("Currency code (e.g. EUR)", text: $currency)
+                .textFieldStyle(.roundedBorder)
+            TextField("Current balance", text: $balance)
+                .textFieldStyle(.roundedBorder)
+            TextField("Initial average rate (NTD per unit)", text: $averageRate)
+                .textFieldStyle(.roundedBorder)
+            Text("For an existing balance, enter the weighted-average acquisition rate. Future exchange transactions can update this cost basis.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }
+                    .buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 440)
+    }
+
+    private func save() {
+        let code = currency.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard code.count >= 3 && code.count <= 5,
+              code != "NTD",
+              let balanceValue = Double(balance), balanceValue >= 0,
+              let rateValue = Double(averageRate), rateValue > 0 else {
+            errorMessage = "Enter a valid currency code, balance, and average rate."
+            return
+        }
+
+        do {
+            try appModel.createAsset(
+                name: code,
+                assetGroup: "liquid_asset",
+                category: "Foreign Currency",
+                currency: code,
+                value: balanceValue,
+                ntdValue: balanceValue * rateValue
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct ForeignCurrencySummary: Identifiable {
+    let currency: String
+    let amount: Double
+    let ntdValue: Double
+    let rate: Double?
+
+    var id: String { currency }
 }
 
 struct OverviewView: View {
@@ -1690,7 +1920,7 @@ struct PortfolioMetricCard: View {
             Text(value).font(.title2.weight(.bold)).foregroundStyle(tint)
             Text(detail).font(.caption).foregroundStyle(tint == .primary ? .secondary : tint)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 132, maxHeight: 132, alignment: .topLeading)
         .padding(18)
         .background(.background, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
@@ -1819,7 +2049,7 @@ struct DividendManagementView: View {
                 }
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 48)
                 .padding(.bottom, 10)
 
                 ScrollView {
@@ -1840,7 +2070,7 @@ struct DividendManagementView: View {
                                     Text(money(dividend.amount, currency: dividend.currency))
                                         .frame(width: 140, alignment: .trailing)
                                 }
-                                .padding(.horizontal, 32)
+                                .padding(.horizontal, 48)
                                 .padding(.vertical, 11)
                                 .contextMenu {
                                     Button("Edit") { editing = dividend }
