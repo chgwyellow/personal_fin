@@ -656,20 +656,177 @@ enum AppLanguage: String {
 }
 
 private enum FinTrackTheme {
-    static let appBackground = Color(red: 0x29 / 255.0, green: 0x2C / 255.0, blue: 0x2C / 255.0)
-    static let sidebarBackground = Color(red: 0x25 / 255.0, green: 0x28 / 255.0, blue: 0x28 / 255.0)
-    static let cardBackground = Color(red: 0x30 / 255.0, green: 0x33 / 255.0, blue: 0x33 / 255.0)
-    static let surfaceHover = Color(red: 0x37 / 255.0, green: 0x3B / 255.0, blue: 0x3A / 255.0)
-    static let border = Color(red: 0x48 / 255.0, green: 0x4C / 255.0, blue: 0x4B / 255.0)
-    static let textPrimary = Color(red: 0xE7 / 255.0, green: 0xE5 / 255.0, blue: 0xE0 / 255.0)
-    static let textSecondary = Color(red: 0xAA / 255.0, green: 0xA9 / 255.0, blue: 0xA4 / 255.0)
-    static let textMuted = Color(red: 0x85 / 255.0, green: 0x87 / 255.0, blue: 0x83 / 255.0)
-    static let primary = Color(red: 0x78 / 255.0, green: 0x95 / 255.0, blue: 0xA5 / 255.0)
-    static let primaryHover = Color(red: 0x8C / 255.0, green: 0xA8 / 255.0, blue: 0xB6 / 255.0)
-    static let positive = Color(red: 0x7F / 255.0, green: 0xA6 / 255.0, blue: 0x8A / 255.0)
-    static let negative = Color(red: 0xB7 / 255.0, green: 0x7D / 255.0, blue: 0x78 / 255.0)
-    static let warning = Color(red: 0xC0 / 255.0, green: 0xA3 / 255.0, blue: 0x6E / 255.0)
+    private static func adaptive(light: (CGFloat, CGFloat, CGFloat), dark: (CGFloat, CGFloat, CGFloat)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let rgb = appearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua ? light : dark
+            return NSColor(calibratedRed: rgb.0, green: rgb.1, blue: rgb.2, alpha: 1)
+        })
+    }
+
+    static let appBackground = adaptive(light: (0xF3 / 255.0, 0xF2 / 255.0, 0xEE / 255.0), dark: (0x24 / 255.0, 0x27 / 255.0, 0x26 / 255.0))
+    static let sidebarBackground = adaptive(light: (0xEB / 255.0, 0xEA / 255.0, 0xE5 / 255.0), dark: (0x1E / 255.0, 0x22 / 255.0, 0x21 / 255.0))
+    static let cardBackground = adaptive(light: (0xFA / 255.0, 0xF9 / 255.0, 0xF6 / 255.0), dark: (0x30 / 255.0, 0x34 / 255.0, 0x32 / 255.0))
+    static let surfaceHover = adaptive(light: (0xEE / 255.0, 0xED / 255.0, 0xE8 / 255.0), dark: (0x38 / 255.0, 0x3D / 255.0, 0x3A / 255.0))
+    static let border = adaptive(light: (0xD1 / 255.0, 0xD2 / 255.0, 0xCD / 255.0), dark: (0x50 / 255.0, 0x56 / 255.0, 0x52 / 255.0))
+    static let divider = adaptive(light: (0xDD / 255.0, 0xDD / 255.0, 0xD8 / 255.0), dark: (0x45 / 255.0, 0x4A / 255.0, 0x47 / 255.0))
+    static let textPrimary = adaptive(light: (0x29 / 255.0, 0x2D / 255.0, 0x2B / 255.0), dark: (0xF0 / 255.0, 0xEE / 255.0, 0xE9 / 255.0))
+    static let textSecondary = adaptive(light: (0x5F / 255.0, 0x64 / 255.0, 0x61 / 255.0), dark: (0xB8 / 255.0, 0xB6 / 255.0, 0xB0 / 255.0))
+    static let textMuted = adaptive(light: (0x7C / 255.0, 0x81 / 255.0, 0x7E / 255.0), dark: (0x91 / 255.0, 0x93 / 255.0, 0x8E / 255.0))
+    static let textDisabled = adaptive(light: (0xA1 / 255.0, 0xA3 / 255.0, 0x9F / 255.0), dark: (0x6F / 255.0, 0x72 / 255.0, 0x6E / 255.0))
+    static let primary = adaptive(light: (0x58 / 255.0, 0x7D / 255.0, 0x8D / 255.0), dark: (0x83 / 255.0, 0xA6 / 255.0, 0xB5 / 255.0))
+    static let primaryHover = adaptive(light: (0x48 / 255.0, 0x6C / 255.0, 0x7C / 255.0), dark: (0x96 / 255.0, 0xB6 / 255.0, 0xC3 / 255.0))
+    static let primaryActive = adaptive(light: (0x3E / 255.0, 0x60 / 255.0, 0x6E / 255.0), dark: (0x71 / 255.0, 0x93 / 255.0, 0xA2 / 255.0))
+    static let primaryMuted = adaptive(light: (0xDD / 255.0, 0xE7 / 255.0, 0xEA / 255.0), dark: (0x34 / 255.0, 0x4A / 255.0, 0x52 / 255.0))
+    static let positive = adaptive(light: (0x52 / 255.0, 0x7A / 255.0, 0x60 / 255.0), dark: (0x88 / 255.0, 0xB4 / 255.0, 0x9A / 255.0))
+    static let positiveMuted = adaptive(light: (0x6E / 255.0, 0x90 / 255.0, 0x77 / 255.0), dark: (0x70 / 255.0, 0x9A / 255.0, 0x80 / 255.0))
+    static let negative = adaptive(light: (0x9B / 255.0, 0x5E / 255.0, 0x59 / 255.0), dark: (0xC1 / 255.0, 0x84 / 255.0, 0x7F / 255.0))
+    static let negativeMuted = adaptive(light: (0xAD / 255.0, 0x77 / 255.0, 0x72 / 255.0), dark: (0xA3 / 255.0, 0x6F / 255.0, 0x6B / 255.0))
+    static let warning = adaptive(light: (0x8B / 255.0, 0x6D / 255.0, 0x38 / 255.0), dark: (0xC9 / 255.0, 0xAA / 255.0, 0x72 / 255.0))
     static let info = primary
+    static let logoContainerBackground = adaptive(light: (0xEE / 255.0, 0xED / 255.0, 0xE8 / 255.0), dark: (0x3A / 255.0, 0x3E / 255.0, 0x3C / 255.0))
+    static let logoContainerHover = adaptive(light: (0xE5 / 255.0, 0xE4 / 255.0, 0xDF / 255.0), dark: (0x42 / 255.0, 0x47 / 255.0, 0x44 / 255.0))
+    static let logoContainerBorder = adaptive(light: (0xD1 / 255.0, 0xD2 / 255.0, 0xCD / 255.0), dark: (0x4A / 255.0, 0x4F / 255.0, 0x4C / 255.0))
+    static let logoFallbackBackground = adaptive(light: (0xDD / 255.0, 0xE7 / 255.0, 0xEA / 255.0), dark: (0x34 / 255.0, 0x4A / 255.0, 0x52 / 255.0))
+    static let logoFallbackBorder = adaptive(light: (0xC4 / 255.0, 0xD3 / 255.0, 0xD8 / 255.0), dark: (0x49 / 255.0, 0x61 / 255.0, 0x6A / 255.0))
+    static let logoFallbackForeground = adaptive(light: (0x58 / 255.0, 0x7D / 255.0, 0x8D / 255.0), dark: (0x96 / 255.0, 0xB6 / 255.0, 0xC3 / 255.0))
+
+    static let allocationPalette = [
+        adaptive(light: (0x6F / 255.0, 0x92 / 255.0, 0x9F / 255.0), dark: (0x8B / 255.0, 0xA9 / 255.0, 0xB5 / 255.0)),
+        adaptive(light: (0x55 / 255.0, 0x76 / 255.0, 0x83 / 255.0), dark: (0x6F / 255.0, 0x8D / 255.0, 0x98 / 255.0)),
+        adaptive(light: (0x66 / 255.0, 0x87 / 255.0, 0x7E / 255.0), dark: (0x78 / 255.0, 0x96 / 255.0, 0x8E / 255.0)),
+        adaptive(light: (0x50 / 255.0, 0x6F / 255.0, 0x69 / 255.0), dark: (0x65 / 255.0, 0x7D / 255.0, 0x78 / 255.0)),
+        adaptive(light: (0xB5 / 255.0, 0x8D / 255.0, 0x49 / 255.0), dark: (0xD0 / 255.0, 0xAC / 255.0, 0x6C))
+    ]
+}
+
+private enum CompanyLogoRepository {
+    private static let maxCacheBytes = 50 * 1024 * 1024
+    private static let refreshInterval: TimeInterval = 30 * 24 * 60 * 60
+
+    static func data(for symbol: String) async -> Data? {
+        let fileURL = cacheURL(for: symbol)
+        let cachedData = try? Data(contentsOf: fileURL)
+        if let cachedData,
+           let modified = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+           Date().timeIntervalSince(modified) < refreshInterval {
+            return cachedData
+        }
+
+        do {
+            let encodedSymbol = symbol.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? symbol
+            guard let url = URL(string: "https://financialmodelingprep.com/image-stock/\(encodedSymbol).png") else {
+                return cachedData
+            }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 8
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode),
+                  NSImage(data: data) != nil else {
+                return cachedData
+            }
+            try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            try data.write(to: fileURL, options: .atomic)
+            trimCache()
+            return data
+        } catch {
+            return cachedData
+        }
+    }
+
+    private static var cacheDirectory: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FinTrack/CompanyLogos", isDirectory: true)
+    }
+
+    private static func cacheURL(for symbol: String) -> URL {
+        let safeName = symbol.map { $0.isLetter || $0.isNumber ? $0 : "_" }
+        return cacheDirectory.appendingPathComponent(String(safeName) + ".png")
+    }
+
+    private static func trimCache() {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]
+        ) else { return }
+
+        let entries = files.compactMap { url -> (url: URL, size: Int, modified: Date)? in
+            guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+                  let size = values.fileSize,
+                  let modified = values.contentModificationDate else { return nil }
+            return (url, size, modified)
+        }
+        var total = entries.reduce(0) { $0 + $1.size }
+        for entry in entries.sorted(by: { $0.modified < $1.modified }) where total > maxCacheBytes {
+            try? FileManager.default.removeItem(at: entry.url)
+            total -= entry.size
+        }
+    }
+}
+
+@MainActor
+private final class CompanyLogoLoader: ObservableObject {
+    let symbol: String
+    @Published var image: NSImage?
+
+    init(symbol: String) {
+        self.symbol = symbol
+    }
+
+    func load() async {
+        guard image == nil, !symbol.isEmpty else { return }
+        guard let data = await CompanyLogoRepository.data(for: symbol), !Task.isCancelled else { return }
+        image = NSImage(data: data)
+    }
+}
+
+private struct CompanyLogoView: View {
+    let symbol: String
+    let name: String
+    @StateObject private var loader: CompanyLogoLoader
+
+    init(symbol: String, name: String) {
+        self.symbol = symbol
+        self.name = name
+        _loader = StateObject(wrappedValue: CompanyLogoLoader(symbol: symbol))
+    }
+
+    var body: some View {
+        Group {
+            if let image = loader.image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .padding(8)
+            } else {
+                Text(fallbackInitial)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(FinTrackTheme.logoFallbackForeground)
+            }
+        }
+        .frame(width: 48, height: 48)
+        .background(
+            loader.image == nil ? FinTrackTheme.logoFallbackBackground : FinTrackTheme.logoContainerBackground,
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(loader.image == nil ? FinTrackTheme.logoFallbackBorder : FinTrackTheme.logoContainerBorder, lineWidth: 1)
+        }
+        .task(id: symbol) {
+            await loader.load()
+        }
+    }
+
+    private var fallbackInitial: String {
+        let meaningfulName = name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: { $0.isWhitespace || $0.isPunctuation })
+            .first
+        return String(meaningfulName?.first ?? symbol.first ?? "?").uppercased()
+    }
 }
 
 enum L10n {
@@ -729,6 +886,7 @@ enum L10n {
 struct DashboardView: View {
     @State private var selectedPage = "Overview"
     @AppStorage("appearanceMode") private var appearanceMode = "system"
+    @State private var resolvedSystemScheme: ColorScheme = .dark
 
     private var preferredColorScheme: ColorScheme? {
         switch appearanceMode {
@@ -744,7 +902,11 @@ struct DashboardView: View {
                 .navigationSplitViewColumnWidth(240)
         } detail: {
             ZStack(alignment: .topTrailing) {
-                DashboardContentView(pageTitle: selectedPage, selectedPage: $selectedPage)
+                DashboardContentView(
+                    pageTitle: selectedPage,
+                    selectedPage: $selectedPage,
+                    appearanceMode: $appearanceMode
+                )
                 Button {
                     selectedPage = "Help"
                 } label: {
@@ -753,16 +915,43 @@ struct DashboardView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Help")
-                .padding(.top, 14)
-                .padding(.trailing, 20)
+                    .padding(.top, 14)
+                    .padding(.trailing, 20)
             }
+            .background(FinTrackTheme.appBackground.ignoresSafeArea())
         }
         .frame(minWidth: 980, minHeight: 680)
+        .background(FinTrackTheme.appBackground.ignoresSafeArea())
         .foregroundStyle(FinTrackTheme.textPrimary)
         .tint(FinTrackTheme.primary)
         .preferredColorScheme(preferredColorScheme)
+        .environment(\.colorScheme, appearanceMode == "system" ? resolvedSystemScheme : (appearanceMode == "light" ? .light : .dark))
         .onAppear {
             hideWindowTitle()
+            applyAppearance(appearanceMode)
+        }
+        .onChange(of: appearanceMode) { _, newMode in
+            applyAppearance(newMode)
+        }
+    }
+
+    private func applyAppearance(_ mode: String) {
+        let appearance: NSAppearance?
+        switch mode {
+        case "light":
+            appearance = NSAppearance(named: .aqua)
+        case "dark":
+            appearance = NSAppearance(named: .darkAqua)
+        default:
+            appearance = nil
+        }
+        NSApp.appearance = appearance
+        NSApp.windows.forEach { $0.appearance = appearance }
+        if mode == "system" {
+            let effective = NSApp.effectiveAppearance
+            resolvedSystemScheme = effective.bestMatch(from: [.aqua, .darkAqua]) == .aqua ? .light : .dark
+        } else {
+            resolvedSystemScheme = mode == "light" ? .light : .dark
         }
     }
 
@@ -791,7 +980,7 @@ struct SidebarView: View {
                 if recurringExpanded {
                     if appModel.recurringRecords.isEmpty {
                         Text(L10n.text("No recurring investments", language: appLanguage))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FinTrackTheme.textSecondary)
                             .padding(.leading, 22)
                     } else {
                         ForEach(appModel.recurringRecords) { recurring in
@@ -841,8 +1030,14 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .font(selectedPage == title ? .headline.weight(.semibold) : .body)
-        .foregroundStyle(selectedPage == title ? FinTrackTheme.primary : FinTrackTheme.textPrimary)
+        .foregroundStyle(selectedPage == title ? FinTrackTheme.primaryHover : FinTrackTheme.textPrimary)
         .padding(.leading, isChild ? 22 : 0)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(
+            selectedPage == title ? FinTrackTheme.primaryMuted : Color.clear,
+            in: RoundedRectangle(cornerRadius: 8)
+        )
         .scaleEffect(selectedPage == title ? 1.04 : 1, anchor: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -860,7 +1055,13 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .font(selectedPage == title ? .headline.weight(.semibold) : .body)
-        .foregroundStyle(selectedPage == title ? FinTrackTheme.primary : FinTrackTheme.textPrimary)
+        .foregroundStyle(selectedPage == title ? FinTrackTheme.primaryHover : FinTrackTheme.textPrimary)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(
+            selectedPage == title ? FinTrackTheme.primaryMuted : Color.clear,
+            in: RoundedRectangle(cornerRadius: 8)
+        )
         .scaleEffect(selectedPage == title ? 1.04 : 1, anchor: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -898,6 +1099,7 @@ struct SidebarIconButton: View {
 struct DashboardContentView: View {
     let pageTitle: String
     @Binding var selectedPage: String
+    @Binding var appearanceMode: String
     @EnvironmentObject private var appModel: AppModel
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @AppStorage("showDetailChanges") private var showDetailChanges = false
@@ -925,7 +1127,7 @@ struct DashboardContentView: View {
                 IncomeStatementView()
             } else if pageTitle == "Settings" {
                 ScrollView {
-                    SettingsCard(showDetailChanges: $showDetailChanges)
+                    SettingsCard(showDetailChanges: $showDetailChanges, appearanceMode: $appearanceMode)
                         .padding(24)
                 }
             } else if pageTitle == "Help" {
@@ -945,6 +1147,11 @@ struct DashboardContentView: View {
 }
 
 struct ForeignCurrencyView: View {
+    private enum CurrencySortKey {
+        case currency
+        case ntdValue
+    }
+
     @EnvironmentObject private var appModel: AppModel
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @State private var showingAdd = false
@@ -952,6 +1159,8 @@ struct ForeignCurrencyView: View {
     @State private var editingAsset: DatabaseManager.AssetRecord?
     @State private var pendingDelete: ForeignCurrencySummary?
     @State private var pendingDeleteTransaction: DatabaseManager.ForeignCurrencyTransactionRecord?
+    @State private var sortKey: CurrencySortKey = .currency
+    @State private var sortAscending = true
 
     private var summaries: [ForeignCurrencySummary] {
         let grouped = Dictionary(grouping: appModel.assets.filter { $0.currency != "NTD" }, by: \.currency)
@@ -967,7 +1176,18 @@ struct ForeignCurrencyView: View {
                 assetIDs: assets.map(\.id)
             )
         }
-        .sorted { $0.currency < $1.currency }
+        .sorted { lhs, rhs in
+            switch sortKey {
+            case .currency:
+                let comparison = lhs.currency.localizedCaseInsensitiveCompare(rhs.currency)
+                return sortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+            case .ntdValue:
+                if lhs.ntdValue != rhs.ntdValue {
+                    return sortAscending ? lhs.ntdValue < rhs.ntdValue : lhs.ntdValue > rhs.ntdValue
+                }
+                return lhs.currency < rhs.currency
+            }
+        }
     }
 
     var body: some View {
@@ -994,7 +1214,7 @@ struct ForeignCurrencyView: View {
                 }
 
                 Rectangle()
-                    .fill(FinTrackTheme.border)
+                    .fill(FinTrackTheme.divider)
                     .frame(height: 1)
                     .padding(.vertical, 4)
 
@@ -1012,23 +1232,38 @@ struct ForeignCurrencyView: View {
                     .padding(.bottom, 10)
 
                     HStack(spacing: 16) {
-                        Text(L10n.text("CURRENCY", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
+                        Button(action: { toggleSort(.currency) }) {
+                            HStack(spacing: 6) {
+                                Text(L10n.text("CURRENCY", language: appLanguage))
+                                sortIndicator(for: .currency)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         Text(L10n.text("BALANCE", language: appLanguage)).frame(width: 150, alignment: .trailing)
                         Text(L10n.text("RATE", language: appLanguage)).frame(width: 150, alignment: .trailing)
-                        Text(L10n.text("NTD VALUE", language: appLanguage)).frame(width: 170, alignment: .trailing)
+                        Button(action: { toggleSort(.ntdValue) }) {
+                            HStack(spacing: 6) {
+                                sortIndicator(for: .ntdValue)
+                                Text(L10n.text("NTD VALUE", language: appLanguage))
+                            }
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: 170, alignment: .trailing)
                     }
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FinTrackTheme.textSecondary)
                     .padding(.horizontal, 40)
                     .padding(.top, 8)
                     .padding(.bottom, 10)
 
                     if summaries.isEmpty {
                         Text(L10n.text("No foreign-currency balances recorded.", language: appLanguage))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(FinTrackTheme.textSecondary)
                             .frame(maxWidth: .infinity, minHeight: 180)
                     } else {
-                        ForEach(summaries) { summary in
+                        ForEach(sortedSummaries) { summary in
                             HStack(spacing: 16) {
                                 Text(summary.currency)
                                     .font(.headline)
@@ -1100,6 +1335,27 @@ struct ForeignCurrencyView: View {
         }
     }
 
+    private var sortedSummaries: [ForeignCurrencySummary] {
+        summaries
+    }
+
+    private func toggleSort(_ key: CurrencySortKey) {
+        if sortKey == key {
+            sortAscending.toggle()
+        } else {
+            sortKey = key
+            sortAscending = true
+        }
+    }
+
+    @ViewBuilder
+    private func sortIndicator(for key: CurrencySortKey) -> some View {
+        if sortKey == key {
+            Image(systemName: sortAscending ? "arrow.down" : "arrow.up")
+                .font(.caption2)
+        }
+    }
+
     private var foreignTransactionCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -1125,13 +1381,13 @@ struct ForeignCurrencyView: View {
                 Text(L10n.text("DATE", language: appLanguage)).frame(width: 95, alignment: .trailing)
             }
             .font(.caption.weight(.bold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(FinTrackTheme.textSecondary)
             .padding(.horizontal, 40)
             .padding(.bottom, 10)
 
             if appModel.foreignCurrencyTransactions.isEmpty {
                 Text(L10n.text("No foreign-currency transactions recorded.", language: appLanguage))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FinTrackTheme.textSecondary)
                     .frame(maxWidth: .infinity, minHeight: 140)
             } else {
                 ForEach(appModel.foreignCurrencyTransactions) { transaction in
@@ -1219,7 +1475,7 @@ private struct ForeignCurrencyTransactionSheet: View {
             DatePicker(L10n.text("Date", language: appLanguage), selection: $tradeDate, displayedComponents: .date)
             Text(L10n.text(transactionType == "exchange" ? "Exchange transactions require NTD amount and rate." : "Other transactions only change the foreign-currency balance; NTD amount and rate are not required.", language: appLanguage))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FinTrackTheme.textSecondary)
 
             HStack {
                 Spacer()
@@ -1317,7 +1573,7 @@ private struct AddForeignCurrencySheet: View {
                 .textFieldStyle(.roundedBorder)
             Text("Enter the weighted-average cost rate of the remaining balance, not the total exchanged amount. For example, USD 497.30 at NTD 31.5220 creates an NTD cost basis of about NTD 15,675.89.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FinTrackTheme.textSecondary)
 
             HStack {
                 Spacer()
@@ -1389,7 +1645,7 @@ struct OverviewView: View {
             .padding(.horizontal, 24)
 
             Rectangle()
-                .fill(FinTrackTheme.border)
+                .fill(FinTrackTheme.divider)
                 .frame(height: 1)
                 .padding(.horizontal, 24)
 
@@ -1510,9 +1766,10 @@ private func money(_ value: Double, currency: String) -> String {
     }
     let formatter = NumberFormatter()
     formatter.numberStyle = .decimal
-    formatter.minimumFractionDigits = 2
-    formatter.maximumFractionDigits = 2
-    return "\(prefix)\(formatter.string(from: NSNumber(value: value)) ?? "0.00")"
+    let isNTD = currency == "NTD" || currency == "TWD"
+    formatter.minimumFractionDigits = isNTD ? 0 : 2
+    formatter.maximumFractionDigits = isNTD ? 0 : 2
+    return "\(prefix)\(formatter.string(from: NSNumber(value: value)) ?? (isNTD ? "0" : "0.00"))"
 }
 
 private func shares(_ value: Double, market: String) -> String {
@@ -1598,12 +1855,12 @@ struct AddAssetSheet: View {
                     Text(L10n.text("Average exchange rate", language: appLanguage))
                     Spacer()
                     Text(exchangeRate.map { "NTD \($0)" } ?? "—")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(FinTrackTheme.textSecondary)
                 }
                 .font(.callout)
                 Text(L10n.text("Only exchange or opening-fund cost is included. Dividends and investment gains are recorded separately.", language: appLanguage))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FinTrackTheme.textSecondary)
             }
 
             HStack {
@@ -2020,7 +2277,7 @@ struct AddHoldingSheet: View {
             TextField("Total cost (\(currency))", text: $totalCost).textFieldStyle(.roundedBorder)
             Text("Holding cost and P&L stay in the original currency until an exchange transaction is recorded.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FinTrackTheme.textSecondary)
 
             HStack {
                 Spacer()
@@ -2257,7 +2514,7 @@ struct PortfolioView: View {
             .padding(.horizontal, 24)
 
             Rectangle()
-                .fill(FinTrackTheme.border)
+                .fill(FinTrackTheme.divider)
                 .frame(height: 1)
                 .padding(.horizontal, 24)
 
@@ -2366,7 +2623,7 @@ struct PortfolioMetricCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.text(title, language: appLanguage)).font(.caption.weight(.bold)).foregroundStyle(.secondary)
+            Text(L10n.text(title, language: appLanguage)).font(.caption.weight(.bold)).foregroundStyle(FinTrackTheme.textSecondary)
             Text(value).font(.title2.weight(.bold)).foregroundStyle(tint)
             Text(L10n.text(detail, language: appLanguage)).font(.caption).foregroundStyle(tint == .primary ? .secondary : tint)
         }
@@ -2448,6 +2705,7 @@ struct PositionsCard: View {
     private func positionRow(_ holding: PortfolioHolding) -> some View {
         HStack(spacing: 12) {
             HStack(spacing: 12) {
+                CompanyLogoView(symbol: holding.symbol, name: holding.securityName)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(holding.securityName).font(.headline).lineLimit(1)
                     Text("\(holding.quantity) \(L10n.text("shares", language: appLanguage)) · \(holding.symbol)")
@@ -2714,6 +2972,7 @@ struct AddDividendSheet: View {
 
 struct AllocationCard: View {
     let records: [DatabaseManager.AllocationRecord]
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @State private var hoveredIndex: Int?
 
@@ -2726,12 +2985,12 @@ struct AllocationCard: View {
                 Text(L10n.text("Allocation will appear after holdings and market prices are available.", language: appLanguage))
                     .foregroundStyle(.secondary)
             } else {
-                let total = records.reduce(0) { $0 + $1.valueNTD }
+                let total = rankedRecords.reduce(0) { $0 + $1.valueNTD }
                 HStack(alignment: .center, spacing: 0) {
                     ZStack {
                         Circle()
                             .stroke(Color.white.opacity(0.08), lineWidth: 38)
-                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                        ForEach(Array(rankedRecords.enumerated()), id: \.element.id) { index, record in
                             Circle()
                                 .trim(
                                     from: allocationStart(for: index, total: total),
@@ -2767,7 +3026,7 @@ struct AllocationCard: View {
                     .frame(maxWidth: .infinity)
 
                     VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                        ForEach(Array(rankedRecords.enumerated()), id: \.element.id) { index, record in
                             HStack(spacing: 8) {
                                 Circle().fill(allocationColor(index)).frame(width: 10, height: 10)
                                 Text(record.name)
@@ -2782,7 +3041,7 @@ struct AllocationCard: View {
                     .frame(maxWidth: .infinity)
 
                     VStack(alignment: .trailing, spacing: 10) {
-                        ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                        ForEach(Array(rankedRecords.enumerated()), id: \.element.id) { index, record in
                             Text(total > 0 ? String(format: "%.1f%%", record.valueNTD / total * 100) : "0.0%")
                                 .font(hoveredIndex == index ? .body.weight(.semibold) : .body)
                                 .foregroundStyle(hoveredIndex == index ? .primary : .secondary)
@@ -2805,9 +3064,18 @@ struct AllocationCard: View {
         total > 0 ? CGFloat(record.valueNTD / total) : 0
     }
 
+    private var rankedRecords: [DatabaseManager.AllocationRecord] {
+        records.sorted {
+            if $0.valueNTD != $1.valueNTD {
+                return $0.valueNTD > $1.valueNTD
+            }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
     private func allocationStart(for index: Int, total: Double) -> CGFloat {
         guard total > 0 else { return 0 }
-        return CGFloat(records.prefix(index).reduce(0) { $0 + $1.valueNTD } / total)
+        return CGFloat(rankedRecords.prefix(index).reduce(0) { $0 + $1.valueNTD } / total)
     }
 
     private func allocationIndex(at location: CGPoint, size: CGSize, total: Double) -> Int? {
@@ -2824,33 +3092,45 @@ struct AllocationCard: View {
         if angle < 0 { angle += Double.pi * 2 }
         let position = CGFloat(angle / (Double.pi * 2))
 
-        for index in records.indices {
+        for index in rankedRecords.indices {
             let start = allocationStart(for: index, total: total)
-            let end = start + allocationFraction(records[index], total: total)
+            let end = start + allocationFraction(rankedRecords[index], total: total)
             if position >= start && position < end { return index }
         }
         return nil
     }
 
     private func allocationColor(_ index: Int) -> Color {
-        [
-            Color(red: 0x60 / 255.0, green: 0x6C / 255.0, blue: 0x38 / 255.0),
-            Color(red: 0x28 / 255.0, green: 0x36 / 255.0, blue: 0x18 / 255.0),
-            Color(red: 0xFE / 255.0, green: 0xFA / 255.0, blue: 0xE0 / 255.0),
-            Color(red: 0xDD / 255.0, green: 0xA1 / 255.0, blue: 0x5E / 255.0),
-            Color(red: 0xBC / 255.0, green: 0x6C / 255.0, blue: 0x25 / 255.0)
-        ][index % 5]
+        let palette: [Color]
+        if colorScheme == .light {
+            palette = [
+                Color(red: 0x6F / 255.0, green: 0x92 / 255.0, blue: 0x9F / 255.0),
+                Color(red: 0x55 / 255.0, green: 0x76 / 255.0, blue: 0x83 / 255.0),
+                Color(red: 0x66 / 255.0, green: 0x87 / 255.0, blue: 0x7E / 255.0),
+                Color(red: 0x50 / 255.0, green: 0x6F / 255.0, blue: 0x69 / 255.0),
+                Color(red: 0xB5 / 255.0, green: 0x8D / 255.0, blue: 0x49 / 255.0)
+            ]
+        } else {
+            palette = [
+                Color(red: 0x8B / 255.0, green: 0xA9 / 255.0, blue: 0xB5 / 255.0),
+                Color(red: 0x6F / 255.0, green: 0x8D / 255.0, blue: 0x98 / 255.0),
+                Color(red: 0x78 / 255.0, green: 0x96 / 255.0, blue: 0x8E / 255.0),
+                Color(red: 0x65 / 255.0, green: 0x7D / 255.0, blue: 0x78 / 255.0),
+                Color(red: 0xD0 / 255.0, green: 0xAC / 255.0, blue: 0x6C / 255.0)
+            ]
+        }
+        return palette[index % palette.count]
     }
 }
 
 struct LegacyAllocationCard: View {
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     private let segments = [
-        AllocationSegment(name: "富邦公司治理", weight: "34.6%", value: 0.346, color: Color(red: 0.18, green: 0.60, blue: 0.53)),
-        AllocationSegment(name: "兆聯實業", weight: "19.4%", value: 0.194, color: Color(red: 0.78, green: 0.60, blue: 0.34)),
-        AllocationSegment(name: "VT", weight: "17.0%", value: 0.170, color: Color(red: 0.35, green: 0.48, blue: 0.68)),
-        AllocationSegment(name: "NVIDIA", weight: "13.6%", value: 0.136, color: Color(red: 0.56, green: 0.42, blue: 0.62)),
-        AllocationSegment(name: "BND", weight: "4.9%", value: 0.049, color: Color(red: 0.78, green: 0.45, blue: 0.36)),
+        AllocationSegment(name: "富邦公司治理", weight: "34.6%", value: 0.346, color: FinTrackTheme.allocationPalette[0]),
+        AllocationSegment(name: "兆聯實業", weight: "19.4%", value: 0.194, color: FinTrackTheme.allocationPalette[1]),
+        AllocationSegment(name: "VT", weight: "17.0%", value: 0.170, color: FinTrackTheme.allocationPalette[2]),
+        AllocationSegment(name: "NVIDIA", weight: "13.6%", value: 0.136, color: FinTrackTheme.allocationPalette[3]),
+        AllocationSegment(name: "BND", weight: "4.9%", value: 0.049, color: FinTrackTheme.allocationPalette[4]),
     ]
 
     var body: some View {
@@ -3189,7 +3469,7 @@ struct IncomeStatementView: View {
             .padding(.horizontal, 24)
 
             Rectangle()
-                .fill(FinTrackTheme.border)
+                .fill(FinTrackTheme.divider)
                 .frame(height: 1)
                 .padding(.horizontal, 24)
 
@@ -3452,9 +3732,9 @@ struct StatementRow {
 
 struct SettingsCard: View {
     @Binding var showDetailChanges: Bool
+    @Binding var appearanceMode: String
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @AppStorage("performanceColorMode") private var performanceColorMode = "greenUp"
-    @AppStorage("appearanceMode") private var appearanceMode = "system"
     @AppStorage("snapshotTime") private var snapshotTime = "23:00"
 
     private var snapshotOptions: [String] {
@@ -3474,6 +3754,8 @@ struct SettingsCard: View {
                 Text("繁體中文").tag(AppLanguage.traditionalChinese.rawValue)
             }
             .pickerStyle(.menu)
+            .foregroundStyle(FinTrackTheme.textPrimary)
+            .tint(FinTrackTheme.textPrimary)
 
             Picker(L10n.text("Performance colors", language: appLanguage), selection: $performanceColorMode) {
                 Text(L10n.text("Green up / red down", language: appLanguage)).tag("greenUp")
@@ -3481,6 +3763,8 @@ struct SettingsCard: View {
                 Text(L10n.text("Analog mode", language: appLanguage)).tag("analog")
             }
             .pickerStyle(.menu)
+            .foregroundStyle(FinTrackTheme.textPrimary)
+            .tint(FinTrackTheme.textPrimary)
 
             Picker(L10n.text("Daily snapshot time", language: appLanguage), selection: $snapshotTime) {
                 ForEach(snapshotOptions, id: \.self) { time in
@@ -3488,6 +3772,8 @@ struct SettingsCard: View {
                 }
             }
             .pickerStyle(.menu)
+            .foregroundStyle(FinTrackTheme.textPrimary)
+            .tint(FinTrackTheme.textPrimary)
 
             Picker(L10n.text("Appearance", language: appLanguage), selection: $appearanceMode) {
                 Text(L10n.text("System", language: appLanguage)).tag("system")
@@ -3495,6 +3781,8 @@ struct SettingsCard: View {
                 Text(L10n.text("Dark", language: appLanguage)).tag("dark")
             }
             .pickerStyle(.menu)
+            .foregroundStyle(FinTrackTheme.textPrimary)
+            .tint(FinTrackTheme.textPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -3627,7 +3915,7 @@ struct RecurringHoldingDetailView: View {
             }
 
             Rectangle()
-                .fill(FinTrackTheme.border)
+                .fill(FinTrackTheme.divider)
                 .frame(height: 1)
                 .padding(.vertical, 4)
 
@@ -3915,7 +4203,7 @@ struct MetricCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Text(L10n.text(title, language: appLanguage)).foregroundStyle(.secondary)
+            Text(L10n.text(title, language: appLanguage)).foregroundStyle(FinTrackTheme.textSecondary)
                 if warning {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(FinTrackTheme.warning)
@@ -3989,13 +4277,20 @@ struct DetailCard: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {
                 Text(value)
+                    .foregroundStyle(showChange ? changeColor(change) : FinTrackTheme.textPrimary)
                 if showChange {
                     Text(change)
                         .font(.caption)
-                        .foregroundStyle(change.hasPrefix("-") ? .red : .green)
+                        .foregroundStyle(changeColor(change))
                 }
             }
         }
+    }
+
+    private func changeColor(_ change: String) -> Color {
+        change.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("-")
+            ? FinTrackTheme.negative
+            : FinTrackTheme.positive
     }
 }
 
