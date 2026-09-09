@@ -56,11 +56,13 @@ final class DatabaseManager {
         let interestRate: Double?
     }
 
-    struct Snapshot {
+    struct Snapshot: Identifiable {
         let date: String
         let totalAssets: Double
         let totalLiabilities: Double
         let netWorth: Double
+
+        var id: String { date }
     }
 
     struct HoldingRecord: Identifiable {
@@ -112,10 +114,13 @@ final class DatabaseManager {
 
     struct RecurringPurchaseRecord: Identifiable {
         let id: Int64
+        let holdingID: Int64
         let tradeDate: String
         let shares: Double
         let amount: Double
         let currency: String
+        let fundingAssetID: Int64?
+        let foreignTransactionID: Int64?
     }
 
     struct DividendRecord: Identifiable {
@@ -136,6 +141,7 @@ final class DatabaseManager {
         let ntdAmount: Double?
         let rate: Double?
         let tradeDate: String
+        let sourceRecurringPurchaseID: Int64?
     }
 
     struct IncomeStatementItem: Identifiable {
@@ -169,7 +175,7 @@ final class DatabaseManager {
 
     func listForeignCurrencyTransactions() throws -> [ForeignCurrencyTransactionRecord] {
         let sql = """
-        SELECT id, purpose, currency, foreign_amount, ntd_amount, rate, trade_date
+        SELECT id, purpose, currency, foreign_amount, ntd_amount, rate, trade_date, source_recurring_purchase_id
         FROM foreign_currency_transactions
         ORDER BY trade_date DESC, id DESC;
         """
@@ -188,7 +194,8 @@ final class DatabaseManager {
                 foreignAmount: sqlite3_column_double(statement, 3),
                 ntdAmount: sqlite3_column_type(statement, 4) == SQLITE_NULL ? nil : sqlite3_column_double(statement, 4),
                 rate: sqlite3_column_type(statement, 5) == SQLITE_NULL ? nil : sqlite3_column_double(statement, 5),
-                tradeDate: String(cString: sqlite3_column_text(statement, 6))
+                tradeDate: String(cString: sqlite3_column_text(statement, 6)),
+                sourceRecurringPurchaseID: sqlite3_column_type(statement, 7) == SQLITE_NULL ? nil : sqlite3_column_int64(statement, 7)
             ))
         }
         return records
@@ -205,20 +212,7 @@ final class DatabaseManager {
         try execute("BEGIN TRANSACTION;")
         do {
             try adjustForeignCurrencyBalance(currency: currency, foreignAmount: foreignAmount, ntdAmount: ntdAmount, rate: rate)
-            let sql = """
-            INSERT INTO foreign_currency_transactions
-                (purpose, currency, foreign_amount, ntd_amount, rate, trade_date)
-            VALUES (?, ?, ?, ?, ?, ?);
-            """
-            try executePrepared(sql) { statement in
-                let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-                sqlite3_bind_text(statement, 1, purpose, -1, destructor)
-                sqlite3_bind_text(statement, 2, currency, -1, destructor)
-                sqlite3_bind_double(statement, 3, foreignAmount)
-                if let ntdAmount { sqlite3_bind_double(statement, 4, ntdAmount) } else { sqlite3_bind_null(statement, 4) }
-                if let rate { sqlite3_bind_double(statement, 5, rate) } else { sqlite3_bind_null(statement, 5) }
-                sqlite3_bind_text(statement, 6, tradeDate, -1, destructor)
-            }
+            _ = try insertForeignCurrencyTransaction(purpose: purpose, currency: currency, foreignAmount: foreignAmount, ntdAmount: ntdAmount, rate: rate, tradeDate: tradeDate, sourceRecurringPurchaseID: nil)
             try execute("COMMIT;")
         } catch {
             try? execute("ROLLBACK;")
@@ -231,6 +225,11 @@ final class DatabaseManager {
         try execute("BEGIN TRANSACTION;")
         do {
             try adjustForeignCurrencyBalance(currency: transaction.currency, foreignAmount: -transaction.foreignAmount, ntdAmount: transaction.ntdAmount.map { -$0 }, rate: transaction.rate)
+            if let purchaseID = transaction.sourceRecurringPurchaseID,
+               let purchase = try recurringPurchase(id: purchaseID) {
+                try adjustHolding(holdingID: purchase.holdingID, shares: -purchase.shares, amount: -purchase.amount)
+                try execute("DELETE FROM recurring_purchases WHERE id = \(purchaseID);")
+            }
             try execute("DELETE FROM foreign_currency_transactions WHERE id = \(id);")
             try execute("COMMIT;")
         } catch {
@@ -240,7 +239,7 @@ final class DatabaseManager {
     }
 
     private func foreignCurrencyTransaction(id: Int64) throws -> ForeignCurrencyTransactionRecord? {
-        let sql = "SELECT id, purpose, currency, foreign_amount, ntd_amount, rate, trade_date FROM foreign_currency_transactions WHERE id = ?;"
+        let sql = "SELECT id, purpose, currency, foreign_amount, ntd_amount, rate, trade_date, source_recurring_purchase_id FROM foreign_currency_transactions WHERE id = ?;"
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
         guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { throw DatabaseError.queryFailed(databaseMessage) }
@@ -253,8 +252,36 @@ final class DatabaseManager {
             foreignAmount: sqlite3_column_double(statement, 3),
             ntdAmount: sqlite3_column_type(statement, 4) == SQLITE_NULL ? nil : sqlite3_column_double(statement, 4),
             rate: sqlite3_column_type(statement, 5) == SQLITE_NULL ? nil : sqlite3_column_double(statement, 5),
-            tradeDate: String(cString: sqlite3_column_text(statement, 6))
+            tradeDate: String(cString: sqlite3_column_text(statement, 6)),
+            sourceRecurringPurchaseID: sqlite3_column_type(statement, 7) == SQLITE_NULL ? nil : sqlite3_column_int64(statement, 7)
         )
+    }
+
+    @discardableResult
+    private func insertForeignCurrencyTransaction(
+        purpose: String,
+        currency: String,
+        foreignAmount: Double,
+        ntdAmount: Double?,
+        rate: Double?,
+        tradeDate: String,
+        sourceRecurringPurchaseID: Int64?
+    ) throws -> Int64 {
+        try executePrepared("""
+        INSERT INTO foreign_currency_transactions
+            (purpose, currency, foreign_amount, ntd_amount, rate, trade_date, source_recurring_purchase_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """) { statement in
+            let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, purpose, -1, destructor)
+            sqlite3_bind_text(statement, 2, currency, -1, destructor)
+            sqlite3_bind_double(statement, 3, foreignAmount)
+            if let ntdAmount { sqlite3_bind_double(statement, 4, ntdAmount) } else { sqlite3_bind_null(statement, 4) }
+            if let rate { sqlite3_bind_double(statement, 5, rate) } else { sqlite3_bind_null(statement, 5) }
+            sqlite3_bind_text(statement, 6, tradeDate, -1, destructor)
+            if let sourceRecurringPurchaseID { sqlite3_bind_int64(statement, 7, sourceRecurringPurchaseID) } else { sqlite3_bind_null(statement, 7) }
+        }
+        return sqlite3_last_insert_rowid(database)
     }
 
     private func adjustForeignCurrencyBalance(currency: String, foreignAmount: Double, ntdAmount: Double?, rate: Double?) throws {
@@ -331,6 +358,10 @@ final class DatabaseManager {
             try execute(schemaSQL)
             try addNTDValueColumnIfNeeded()
             try addHoldingsClassificationColumnsIfNeeded()
+            try addRecurringPurchaseFundingColumnIfNeeded()
+            try addRecurringPurchaseTransactionColumnsIfNeeded()
+            try addForeignTransactionSourceColumnIfNeeded()
+            try backfillRecurringPurchaseForeignTransactions()
             try removeHoldingMarketConstraintIfNeeded()
         } catch {
             sqlite3_close(database)
@@ -728,23 +759,170 @@ final class DatabaseManager {
         guard sqlite3_step(statement) == SQLITE_DONE else { throw DatabaseError.queryFailed(databaseMessage) }
     }
 
-    func addRecurringPurchase(holdingID: Int64, tradeDate: String, shares: Double, amount: Double, currency: String) throws {
-        try insertObservation(
-            sql: "INSERT INTO recurring_purchases (holding_id, trade_date, shares, amount, currency) VALUES (?, ?, ?, ?, ?);",
-            values: [String(holdingID), tradeDate, String(shares), String(amount), currency]
-        )
-        try execute("""
+    func addRecurringPurchase(holdingID: Int64, tradeDate: String, shares: Double, amount: Double, currency: String, fundingAssetID: Int64?) throws {
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try executePrepared("""
+            INSERT INTO recurring_purchases (holding_id, trade_date, shares, amount, currency, funding_asset_id)
+            VALUES (?, ?, ?, ?, ?, ?);
+            """) { statement in
+                let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+                sqlite3_bind_int64(statement, 1, holdingID)
+                sqlite3_bind_text(statement, 2, tradeDate, -1, destructor)
+                sqlite3_bind_double(statement, 3, shares)
+                sqlite3_bind_double(statement, 4, amount)
+                sqlite3_bind_text(statement, 5, currency, -1, destructor)
+                if let fundingAssetID { sqlite3_bind_int64(statement, 6, fundingAssetID) } else { sqlite3_bind_null(statement, 6) }
+            }
+            let purchaseID = sqlite3_last_insert_rowid(database)
+            try adjustHolding(holdingID: holdingID, shares: shares, amount: amount)
+            if let fundingAssetID {
+                try adjustFundingAsset(id: fundingAssetID, amount: -amount)
+                let transactionID = try insertForeignCurrencyTransaction(
+                    purpose: "Recurring Investment",
+                    currency: currency,
+                    foreignAmount: -amount,
+                    ntdAmount: nil,
+                    rate: nil,
+                    tradeDate: tradeDate,
+                    sourceRecurringPurchaseID: purchaseID
+                )
+                try executePrepared("UPDATE recurring_purchases SET foreign_transaction_id = ? WHERE id = ?;") { statement in
+                    sqlite3_bind_int64(statement, 1, transactionID)
+                    sqlite3_bind_int64(statement, 2, purchaseID)
+                }
+            }
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    func updateRecurringPurchase(id: Int64, tradeDate: String, shares: Double, amount: Double, fundingAssetID: Int64?) throws {
+        guard let existing = try recurringPurchase(id: id) else { return }
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try executePrepared("""
+            UPDATE recurring_purchases
+            SET trade_date = ?, shares = ?, amount = ?, funding_asset_id = ?
+            WHERE id = ?;
+            """) { statement in
+                let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+                sqlite3_bind_text(statement, 1, tradeDate, -1, destructor)
+                sqlite3_bind_double(statement, 2, shares)
+                sqlite3_bind_double(statement, 3, amount)
+                if let fundingAssetID { sqlite3_bind_int64(statement, 4, fundingAssetID) } else { sqlite3_bind_null(statement, 4) }
+                sqlite3_bind_int64(statement, 5, id)
+            }
+            try adjustHolding(holdingID: existing.holdingID, shares: shares - existing.shares, amount: amount - existing.amount)
+            if let oldAssetID = existing.fundingAssetID { try adjustFundingAsset(id: oldAssetID, amount: existing.amount) }
+            if let fundingAssetID { try adjustFundingAsset(id: fundingAssetID, amount: -amount) }
+            if let oldTransactionID = existing.foreignTransactionID {
+                if fundingAssetID != nil {
+                    try executePrepared("""
+                    UPDATE foreign_currency_transactions
+                    SET foreign_amount = ?, trade_date = ?, source_recurring_purchase_id = ?
+                    WHERE id = ?;
+                    """) { statement in
+                        let destructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+                        sqlite3_bind_double(statement, 1, -amount)
+                        sqlite3_bind_text(statement, 2, tradeDate, -1, destructor)
+                        sqlite3_bind_int64(statement, 3, id)
+                        sqlite3_bind_int64(statement, 4, oldTransactionID)
+                    }
+                } else {
+                    try execute("DELETE FROM foreign_currency_transactions WHERE id = \(oldTransactionID);")
+                }
+            } else if fundingAssetID != nil {
+                let transactionID = try insertForeignCurrencyTransaction(
+                    purpose: "Recurring Investment",
+                    currency: existing.currency,
+                    foreignAmount: -amount,
+                    ntdAmount: nil,
+                    rate: nil,
+                    tradeDate: tradeDate,
+                    sourceRecurringPurchaseID: id
+                )
+                try executePrepared("UPDATE recurring_purchases SET foreign_transaction_id = ? WHERE id = ?;") { statement in
+                    sqlite3_bind_int64(statement, 1, transactionID)
+                    sqlite3_bind_int64(statement, 2, id)
+                }
+            }
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    func deleteRecurringPurchase(id: Int64) throws {
+        guard let existing = try recurringPurchase(id: id) else { return }
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try execute("DELETE FROM recurring_purchases WHERE id = \(id);")
+            try adjustHolding(holdingID: existing.holdingID, shares: -existing.shares, amount: -existing.amount)
+            if let fundingAssetID = existing.fundingAssetID { try adjustFundingAsset(id: fundingAssetID, amount: existing.amount) }
+            if let transactionID = existing.foreignTransactionID {
+                try execute("DELETE FROM foreign_currency_transactions WHERE id = \(transactionID);")
+            }
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    private func adjustHolding(holdingID: Int64, shares: Double, amount: Double) throws {
+        try executePrepared("""
         UPDATE holdings
-        SET shares = shares + \(shares),
-            total_cost = total_cost + \(amount),
+        SET shares = shares + ?, total_cost = total_cost + ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?;
+        """) { statement in
+            sqlite3_bind_double(statement, 1, shares)
+            sqlite3_bind_double(statement, 2, amount)
+            sqlite3_bind_int64(statement, 3, holdingID)
+        }
+    }
+
+    private func adjustFundingAsset(id: Int64, amount: Double) throws {
+        try executePrepared("""
+        UPDATE assets
+        SET value = MAX(0, value + ?),
+            ntd_value = MAX(0, ntd_value + ?),
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = \(holdingID);
-        """)
+        WHERE id = ? AND is_active = 1;
+        """) { statement in
+            sqlite3_bind_double(statement, 1, amount)
+            sqlite3_bind_double(statement, 2, amount)
+            sqlite3_bind_int64(statement, 3, id)
+        }
+    }
+
+    private func recurringPurchase(id: Int64) throws -> RecurringPurchaseRecord? {
+        let sql = "SELECT id, holding_id, trade_date, shares, amount, currency, funding_asset_id, foreign_transaction_id FROM recurring_purchases WHERE id = ?;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        sqlite3_bind_int64(statement, 1, id)
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return RecurringPurchaseRecord(
+            id: sqlite3_column_int64(statement, 0),
+            holdingID: sqlite3_column_int64(statement, 1),
+            tradeDate: String(cString: sqlite3_column_text(statement, 2)),
+            shares: sqlite3_column_double(statement, 3),
+            amount: sqlite3_column_double(statement, 4),
+            currency: String(cString: sqlite3_column_text(statement, 5)),
+            fundingAssetID: sqlite3_column_type(statement, 6) == SQLITE_NULL ? nil : sqlite3_column_int64(statement, 6),
+            foreignTransactionID: sqlite3_column_type(statement, 7) == SQLITE_NULL ? nil : sqlite3_column_int64(statement, 7)
+        )
     }
 
     func listRecurringPurchases(holdingID: Int64) throws -> [RecurringPurchaseRecord] {
         let sql = """
-        SELECT id, trade_date, shares, amount, currency
+        SELECT id, holding_id, trade_date, shares, amount, currency, funding_asset_id, foreign_transaction_id
         FROM recurring_purchases
         WHERE holding_id = ?
         ORDER BY trade_date DESC, id DESC;
@@ -757,10 +935,13 @@ final class DatabaseManager {
         while sqlite3_step(statement) == SQLITE_ROW {
             records.append(RecurringPurchaseRecord(
                 id: sqlite3_column_int64(statement, 0),
-                tradeDate: String(cString: sqlite3_column_text(statement, 1)),
-                shares: sqlite3_column_double(statement, 2),
-                amount: sqlite3_column_double(statement, 3),
-                currency: String(cString: sqlite3_column_text(statement, 4))
+                holdingID: sqlite3_column_int64(statement, 1),
+                tradeDate: String(cString: sqlite3_column_text(statement, 2)),
+                shares: sqlite3_column_double(statement, 3),
+                amount: sqlite3_column_double(statement, 4),
+                currency: String(cString: sqlite3_column_text(statement, 5)),
+                fundingAssetID: sqlite3_column_type(statement, 6) == SQLITE_NULL ? nil : sqlite3_column_int64(statement, 6),
+                foreignTransactionID: sqlite3_column_type(statement, 7) == SQLITE_NULL ? nil : sqlite3_column_int64(statement, 7)
             ))
         }
         return records
@@ -1320,6 +1501,29 @@ final class DatabaseManager {
         )
     }
 
+    func listSnapshots() throws -> [Snapshot] {
+        let sql = """
+        SELECT snapshot_date, total_assets_ntd, total_liabilities_ntd, net_worth_ntd
+        FROM snapshots
+        ORDER BY snapshot_date ASC;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        var snapshots: [Snapshot] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            snapshots.append(Snapshot(
+                date: String(cString: sqlite3_column_text(statement, 0)),
+                totalAssets: sqlite3_column_double(statement, 1),
+                totalLiabilities: sqlite3_column_double(statement, 2),
+                netWorth: sqlite3_column_double(statement, 3)
+            ))
+        }
+        return snapshots
+    }
+
     private var databaseMessage: String {
         guard let database else { return "Unknown SQLite error" }
         return String(cString: sqlite3_errmsg(database))
@@ -1412,6 +1616,8 @@ final class DatabaseManager {
         shares NUMERIC NOT NULL,
         amount NUMERIC NOT NULL,
         currency TEXT NOT NULL,
+        funding_asset_id INTEGER,
+        foreign_transaction_id INTEGER,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
     );
@@ -1434,6 +1640,7 @@ final class DatabaseManager {
         ntd_amount NUMERIC,
         rate NUMERIC,
         trade_date TEXT NOT NULL,
+        source_recurring_purchase_id INTEGER,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -1508,6 +1715,70 @@ final class DatabaseManager {
             try execute("ALTER TABLE holdings ADD COLUMN etf_type TEXT;")
         } catch DatabaseError.queryFailed(let message) where message.contains("duplicate column name") {
             // The column already exists.
+        }
+    }
+
+    private func addRecurringPurchaseFundingColumnIfNeeded() throws {
+        do {
+            try execute("ALTER TABLE recurring_purchases ADD COLUMN funding_asset_id INTEGER;")
+        } catch DatabaseError.queryFailed(let message) where message.contains("duplicate column name") {
+            // The column already exists in databases created by newer versions.
+        }
+    }
+
+    private func addRecurringPurchaseTransactionColumnsIfNeeded() throws {
+        do {
+            try execute("ALTER TABLE recurring_purchases ADD COLUMN foreign_transaction_id INTEGER;")
+        } catch DatabaseError.queryFailed(let message) where message.contains("duplicate column name") {
+            // The column already exists.
+        }
+    }
+
+    private func addForeignTransactionSourceColumnIfNeeded() throws {
+        do {
+            try execute("ALTER TABLE foreign_currency_transactions ADD COLUMN source_recurring_purchase_id INTEGER;")
+        } catch DatabaseError.queryFailed(let message) where message.contains("duplicate column name") {
+            // The column already exists.
+        }
+    }
+
+    private func backfillRecurringPurchaseForeignTransactions() throws {
+        let sql = """
+        SELECT id, trade_date, amount, currency
+        FROM recurring_purchases
+        WHERE funding_asset_id IS NOT NULL AND foreign_transaction_id IS NULL
+        ORDER BY id;
+        """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+
+        var purchases: [(id: Int64, date: String, amount: Double, currency: String)] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            purchases.append((
+                id: sqlite3_column_int64(statement, 0),
+                date: String(cString: sqlite3_column_text(statement, 1)),
+                amount: sqlite3_column_double(statement, 2),
+                currency: String(cString: sqlite3_column_text(statement, 3))
+            ))
+        }
+
+        for purchase in purchases {
+            let transactionID = try insertForeignCurrencyTransaction(
+                purpose: "Recurring Investment",
+                currency: purchase.currency,
+                foreignAmount: -purchase.amount,
+                ntdAmount: nil,
+                rate: nil,
+                tradeDate: purchase.date,
+                sourceRecurringPurchaseID: purchase.id
+            )
+            try executePrepared("UPDATE recurring_purchases SET foreign_transaction_id = ? WHERE id = ?;") { update in
+                sqlite3_bind_int64(update, 1, transactionID)
+                sqlite3_bind_int64(update, 2, purchase.id)
+            }
         }
     }
 

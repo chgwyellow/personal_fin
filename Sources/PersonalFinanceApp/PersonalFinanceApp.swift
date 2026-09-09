@@ -1,4 +1,5 @@
 import AppKit
+import Charts
 import Foundation
 import SwiftUI
 
@@ -48,6 +49,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var foreignExchangeRates: [String: Double] = [:]
     @Published private(set) var foreignExchangeRatesUpdatedAt: Date?
     @Published private(set) var todayPLNTD: Double?
+    @Published private(set) var snapshots: [DatabaseManager.Snapshot] = []
     private let databaseManager: DatabaseManager?
     private let marketDataClient = MarketDataClient()
 
@@ -63,6 +65,7 @@ final class AppModel: ObservableObject {
         refreshStatementAccounts()
         refreshPortfolioTotals()
         refreshAllocations()
+        refreshSnapshots()
     }
 
     func refreshAssets() {
@@ -151,14 +154,37 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func addRecurringPurchase(holdingID: Int64, tradeDate: String, shares: Double, amount: Double, currency: String) throws {
+    func addRecurringPurchase(holdingID: Int64, tradeDate: String, shares: Double, amount: Double, currency: String, fundingAssetID: Int64?) throws {
         guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
-        try databaseManager.addRecurringPurchase(holdingID: holdingID, tradeDate: tradeDate, shares: shares, amount: amount, currency: currency)
+        try databaseManager.addRecurringPurchase(holdingID: holdingID, tradeDate: tradeDate, shares: shares, amount: amount, currency: currency, fundingAssetID: fundingAssetID)
         refreshAssets()
         refreshHoldings()
         refreshPortfolioTotals()
         refreshAllocations()
         refreshRecurringInvestments()
+        refreshForeignCurrencyTransactions()
+    }
+
+    func updateRecurringPurchase(id: Int64, tradeDate: String, shares: Double, amount: Double, fundingAssetID: Int64?) throws {
+        guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
+        try databaseManager.updateRecurringPurchase(id: id, tradeDate: tradeDate, shares: shares, amount: amount, fundingAssetID: fundingAssetID)
+        refreshAssets()
+        refreshHoldings()
+        refreshPortfolioTotals()
+        refreshAllocations()
+        refreshRecurringInvestments()
+        refreshForeignCurrencyTransactions()
+    }
+
+    func deleteRecurringPurchase(id: Int64) throws {
+        guard let databaseManager else { throw DatabaseManager.DatabaseError.openFailed("Database is unavailable") }
+        try databaseManager.deleteRecurringPurchase(id: id)
+        refreshAssets()
+        refreshHoldings()
+        refreshPortfolioTotals()
+        refreshAllocations()
+        refreshRecurringInvestments()
+        refreshForeignCurrencyTransactions()
     }
 
     func updateRecurringRule(id: Int64, plannedAmount: Double, currency: String, frequency: String, executionDay: Int) throws {
@@ -418,8 +444,32 @@ final class AppModel: ObservableObject {
                 assets: assetTotals,
                 liabilities: liabilityTotals
             )
+            refreshSnapshots()
         } catch {
             NSLog("FinTrack snapshot save failed: %@", error.localizedDescription)
+        }
+    }
+
+    func refreshSnapshots() {
+        guard let databaseManager else { return }
+        snapshots = (try? databaseManager.listSnapshots()) ?? []
+    }
+
+    func saveManualSnapshot() {
+        guard let databaseManager else { return }
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        do {
+            try databaseManager.saveSnapshot(
+                date: formatter.string(from: Date()),
+                assets: assetTotals,
+                liabilities: liabilityTotals
+            )
+            refreshSnapshots()
+        } catch {
+            NSLog("FinTrack manual snapshot save failed: %@", error.localizedDescription)
         }
     }
 
@@ -839,7 +889,7 @@ enum L10n {
         "Recurring Investment": "定期定額", "Recurring Rules": "定期定額規則", "Click to view investments": "點擊查看投資紀錄", "Foreign Currency": "外幣", "Stock": "股票",
         "Total NTD Equivalent": "新台幣等價總額", "Currencies Held": "持有幣別", "Rates Updated": "匯率更新", "Latest Rate": "最新匯率",
         "live exchange rates": "即時匯率", "ExchangeRate-API": "ExchangeRate-API", "converted from foreign-currency balances": "由外幣餘額換算",
-        "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價", "CURRENCY": "幣別", "SECURITY": "標的", "DATE": "日期", "AMOUNT": "金額", "TRANSACTIONS": "交易紀錄", "PURPOSE": "用途", "FOREIGN AMOUNT": "原幣金額", "NTD": "新台幣", "SHARES": "股數",
+        "BALANCE": "餘額", "RATE": "匯率", "NTD VALUE": "新台幣等價", "CURRENCY": "幣別", "SECURITY": "標的", "DATE": "日期", "AMOUNT": "金額", "TRANSACTIONS": "交易紀錄", "PURPOSE": "用途", "FOREIGN AMOUNT": "原幣", "NTD": "新台幣", "SHARES": "股數",
         "Add foreign-currency transaction": "新增外幣交易", "Transaction type": "交易類型", "Exchange": "換匯", "Exchange direction": "換匯方向", "Buy foreign currency": "買入外幣", "Sell foreign currency back to NTD": "賣出外幣換回新台幣", "Other purpose": "其他用途", "Original currency": "原幣別", "Foreign amount": "原幣金額", "Foreign amount (+ income / - expense)": "原幣金額（收入＋／支出－）", "NTD amount": "新台幣金額", "Rate (NTD per unit)": "匯率（每單位新台幣）", "NTD amount (exchange only)": "新台幣金額（僅換匯）", "Rate (NTD per unit, exchange only)": "匯率（每單位新台幣，僅換匯）", "Purpose": "用途", "Date": "日期", "Exchange transactions require NTD amount and rate.": "換匯交易需要填寫新台幣金額與匯率。", "Other transactions only change the foreign-currency balance; NTD amount and rate are not required.": "其他交易只會變更外幣餘額，不需要填寫新台幣金額與匯率。", "Enter a currency and positive foreign amount.": "請輸入幣別與正的原幣金額。", "Enter a purpose, currency, and positive foreign amount.": "請輸入用途、幣別與正的原幣金額。", "Enter a valid NTD amount and rate for an exchange.": "請輸入有效的新台幣金額與匯率。", "Use a negative foreign amount for investments, spending, or exchanging foreign currency back to NTD. Leave NTD and rate blank for non-exchange transactions.": "投資、支出或換回新台幣時，原幣金額請填負值；非換匯交易的新台幣與匯率請留空。", "Enter a purpose, currency, and non-zero foreign amount.": "請輸入用途、幣別與非零的原幣金額。", "Enter both NTD amount and rate, or leave both blank.": "請同時輸入新台幣金額與匯率，或兩者都留空。", "NTD amount and rate must be greater than zero.": "新台幣金額與匯率必須大於零。",
         "ETF": "ETF", "Settings": "設定", "Help": "說明", "Add": "新增",
         "No recurring investments": "目前沒有定期定額", "No recurring rules": "目前沒有定期定額規則", "Add a rule to plan your recurring investments.": "新增規則以規劃定期定額投資。",
@@ -858,7 +908,7 @@ enum L10n {
         "Financial Indicators": "財務指數", "Free Cash Flow": "自由現金流量", "Liability Ratio": "負債比率",
         "Cash Ratio": "現金比率", "Equity Multiplier": "權益乘數", "Net Worth Growth Rate": "淨值成長率",
         "Net Worth History": "淨值歷史", "Chart area — to be connected to snapshots": "圖表區域 — 將連接資產快照", "Use the sidebar to switch between your financial sections. Market prices and exchange rates are refreshed when the relevant page is opened.": "使用左側邊欄切換財務區塊；開啟相關頁面時會更新股價與匯率。",
-        "Overview Guide": "總覽使用說明", "What you see here": "這裡可以看到你的整體財務狀況。", "Overview brings your financial picture together in one place.": "總覽會把你的整體財務狀況集中在同一個頁面。", "At a glance": "快速掌握", "Total assets means everything you currently own, converted to NTD.": "總資產是你目前擁有的資產總值，外幣會換算成新台幣。", "Total liabilities means the money you currently owe.": "總負債是你目前需要償還的金額。", "Net worth is your assets minus your liabilities.": "淨值就是總資產扣除總負債後，真正剩下的金額。", "Your details": "詳細內容", "The sections below show where your money is held and what makes up each total. Investment values and foreign-currency balances are converted to NTD when possible.": "下方會列出你的資產與負債明細，讓你知道資金目前放在哪裡，以及每個總額是由哪些項目組成。投資與外幣會在可取得資料時換算成新台幣。", "Changes over time": "查看變化", "The percentage below an item compares it with the previous month. You can hide these percentages in Settings.": "項目下方的百分比是與上個月相比的變化，也可以在設定中關閉。", "Adding information": "新增資料", "Use the + button beside a details card to add an asset or liability. Use the related page in the sidebar to add investments, foreign currency, or income and expenses.": "使用明細卡片旁的＋按鈕新增資產或負債；投資、外幣及收入支出，請從左側邊欄進入對應頁面新增。", "Automatic updates": "自動更新", "When you open a related page, FinTrack tries to refresh market prices and exchange rates. If the network is unavailable, your saved local data remains available.": "開啟相關頁面時，FinTrack 會嘗試更新市場價格與匯率；如果沒有網路，仍會保留本機已儲存的資料。",
+        "Overview Guide": "總覽使用說明", "Understand your overall financial position.": "了解你的整體財務狀況。", "OVERVIEW": "總覽", "Your financial picture": "你的財務全貌", "Overview brings your assets, liabilities, investments, and cash together in one financial snapshot.": "總覽會把你的資產、負債、投資與現金集中在同一個財務快照中。", "KEY METRICS": "重要數字", "Everything you currently own, converted to NTD.": "你目前擁有的所有資產，並換算成新台幣。", "Money you currently owe.": "你目前需要償還的金額。", "Total Assets − Total Liabilities": "總資產 − 總負債", "YOUR DETAILS": "你的資產明細", "Cash and other readily available funds.": "現金及其他可以立即使用的資金。", "Investments that can generally be sold.": "通常可以出售變現的投資。", "Assets intended to be held longer.": "預計持有較長時間的資產。", "CHANGES OVER TIME": "查看變化", "Compares the current value with the previous month. You can hide these percentages in Settings.": "比較目前數值與上個月的差異，也可以在設定中關閉百分比。", "ADDING INFORMATION": "新增資料", "Add an asset or liability": "新增資產或負債", "Use the + button in the corresponding details section.": "使用對應明細區塊旁的＋按鈕。", "Add investments": "新增投資", "Open Portfolio from the sidebar.": "從左側邊欄開啟投資組合。", "Add foreign currency": "新增外幣", "Open Foreign Currency from the sidebar.": "從左側邊欄開啟外幣。", "Market data": "市場資料", "FinTrack refreshes market prices and exchange rates when possible. Saved local data remains available offline.": "FinTrack 會在可行時更新市場價格與匯率；沒有網路時，仍可使用已儲存的本機資料。",
         "Income": "收入", "Expenses": "支出", "Savings": "儲蓄", "Salary": "薪資",
         "Bonus": "獎金", "Side Income": "副業收入", "Base Salary": "本薪", "Overtime": "加班費",
         "Freelance": "接案收入", "Necessary": "必要開銷", "Credit Card": "信用卡", "Daily Expenses": "日常花費",
@@ -1119,11 +1169,13 @@ struct DashboardContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(L10n.text(pageTitle, language: appLanguage))
-                .font(.largeTitle.weight(.bold))
-                .padding(.horizontal, 24)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
+            if pageTitle != "Help" {
+                Text(L10n.text(pageTitle, language: appLanguage))
+                    .font(.largeTitle.weight(.bold))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
+            }
 
             if pageTitle == "Portfolio" {
                 PortfolioView()
@@ -1143,7 +1195,9 @@ struct DashboardContentView: View {
                         .padding(24)
                 }
             } else if pageTitle == "Help" {
-                HelpView(page: helpPage)
+                HelpView(page: helpPage) {
+                    selectedPage = helpPage
+                }
             } else {
                 OverviewView(showChanges: showDetailChanges)
             }
@@ -1428,13 +1482,13 @@ struct ForeignCurrencyView: View {
             .padding(.top, 18)
             .padding(.bottom, 14)
 
-            HStack(spacing: 16) {
-                Text(L10n.text("PURPOSE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
-                Text(L10n.text("CURRENCY", language: appLanguage)).frame(width: 70, alignment: .leading)
-                Text(L10n.text("FOREIGN AMOUNT", language: appLanguage)).frame(width: 120, alignment: .trailing)
-                Text(L10n.text("NTD", language: appLanguage)).frame(width: 90, alignment: .trailing)
-                Text(L10n.text("RATE", language: appLanguage)).frame(width: 95, alignment: .trailing)
-                Text(L10n.text("DATE", language: appLanguage)).frame(width: 95, alignment: .trailing)
+            HStack(spacing: 20) {
+                Text(L10n.text("PURPOSE", language: appLanguage)).frame(width: 180, alignment: .leading)
+                Text(L10n.text("CURRENCY", language: appLanguage)).frame(width: 76, alignment: .leading)
+                Text(L10n.text("FOREIGN AMOUNT", language: appLanguage)).frame(width: 105, alignment: .trailing)
+                Text(L10n.text("NTD", language: appLanguage)).frame(width: 82, alignment: .trailing)
+                Text(L10n.text("RATE", language: appLanguage)).frame(width: 88, alignment: .trailing)
+                Text(L10n.text("DATE", language: appLanguage)).frame(width: 100, alignment: .trailing)
             }
             .font(.caption.weight(.bold))
             .foregroundStyle(FinTrackTheme.textSecondary)
@@ -1447,18 +1501,16 @@ struct ForeignCurrencyView: View {
                     .frame(maxWidth: .infinity, minHeight: 140)
             } else {
                 ForEach(appModel.foreignCurrencyTransactions) { transaction in
-                    HStack(spacing: 16) {
-                        Text(transaction.purpose).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                        Text(transaction.currency).frame(width: 70, alignment: .leading)
+                    HStack(spacing: 20) {
+                        Text(transaction.purpose).lineLimit(1).frame(width: 180, alignment: .leading)
+                        Text(transaction.currency).frame(width: 76, alignment: .leading)
                         Text(money(transaction.foreignAmount, currency: transaction.currency))
                             .foregroundStyle(transaction.foreignAmount < 0 ? FinTrackTheme.negative : FinTrackTheme.textPrimary)
-                            .frame(width: 120, alignment: .trailing)
-                        Text(transaction.ntdAmount.map(ntd) ?? "—")
-                            .frame(width: 90, alignment: .trailing)
-                        Text(transaction.rate.map { String(format: "NTD %.4f", $0) } ?? "—")
-                            .frame(width: 95, alignment: .trailing)
+                            .frame(width: 105, alignment: .trailing)
+                        Text(transaction.ntdAmount.map(ntd) ?? "—").frame(width: 82, alignment: .trailing)
+                        Text(transaction.rate.map { String(format: "NTD %.4f", $0) } ?? "—").frame(width: 88, alignment: .trailing)
                         Text(transaction.tradeDate)
-                            .frame(width: 95, alignment: .trailing)
+                            .frame(width: 100, alignment: .trailing)
                     }
                     .padding(.horizontal, 40)
                     .padding(.vertical, 14)
@@ -1781,7 +1833,7 @@ struct OverviewView: View {
                         }
                     }
 
-                    ChartPlaceholder(title: "Net Worth History")
+                    NetWorthHistoryCard()
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
@@ -3544,6 +3596,73 @@ struct ChartPlaceholder: View {
     }
 }
 
+struct NetWorthHistoryCard: View {
+    @EnvironmentObject private var appModel: AppModel
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(L10n.text("Net Worth History", language: appLanguage))
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button {
+                    appModel.saveManualSnapshot()
+                } label: {
+                    Label(
+                        appLanguage == AppLanguage.traditionalChinese.rawValue ? "建立快照" : "Snapshot",
+                        systemImage: "camera"
+                    )
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if appModel.snapshots.isEmpty {
+                Text(appLanguage == AppLanguage.traditionalChinese.rawValue ? "尚無快照，請按右上角建立第一筆。" : "No snapshots yet. Click Snapshot to record the first one.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 150, alignment: .center)
+            } else {
+                Chart(appModel.snapshots) { snapshot in
+                    LineMark(
+                        x: .value("Date", snapshot.date),
+                        y: .value("Net Worth", snapshot.netWorth)
+                    )
+                    .foregroundStyle(FinTrackTheme.primary)
+                    .interpolationMethod(.catmullRom)
+
+                    PointMark(
+                        x: .value("Date", snapshot.date),
+                        y: .value("Net Worth", snapshot.netWorth)
+                    )
+                    .foregroundStyle(FinTrackTheme.primary)
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { value in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                            .foregroundStyle(FinTrackTheme.divider)
+                        AxisValueLabel {
+                            if let amount = value.as(Double.self) {
+                                Text(ntd(amount))
+                            }
+                        }
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 5))
+                }
+                .frame(height: 220)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
+        .onAppear {
+            appModel.refreshSnapshots()
+        }
+    }
+}
+
 struct IncomeStatementView: View {
     @EnvironmentObject private var appModel: AppModel
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
@@ -3934,20 +4053,140 @@ struct SettingsCard: View {
     }
 }
 
+private struct HelpSectionLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(FinTrackTheme.textMuted)
+            .tracking(0.8)
+    }
+}
+
+private struct HelpIntroCard: View {
+    let title: String
+    let description: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.title3.weight(.semibold))
+            Text(description)
+                .foregroundStyle(FinTrackTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(FinTrackTheme.border))
+    }
+}
+
+private struct HelpDefinitionSection: View {
+    let rows: [(String, String)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(row.0)
+                        .font(.body.weight(.semibold))
+                    Text(row.1)
+                        .font(.callout)
+                        .foregroundStyle(FinTrackTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 10)
+
+                if index < rows.count - 1 {
+                    Rectangle()
+                        .fill(FinTrackTheme.divider)
+                        .frame(height: 1)
+                }
+            }
+        }
+    }
+}
+
+private struct HelpActionRow: View {
+    let symbol: String
+    let title: String
+    let description: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .foregroundStyle(FinTrackTheme.primary)
+                .frame(width: 22, height: 24, alignment: .center)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                Text(description)
+                    .font(.callout)
+                    .foregroundStyle(FinTrackTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+private struct HelpInfoCallout: View {
+    let title: String
+    let description: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(FinTrackTheme.info)
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                Text(description)
+                    .font(.callout)
+                    .foregroundStyle(FinTrackTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(FinTrackTheme.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(FinTrackTheme.primary.opacity(0.25)))
+    }
+}
+
 struct HelpView: View {
     let page: String
+    let onBack: () -> Void
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if page == "Overview" {
-                    overviewHelp
-                } else {
-                    Text(L10n.text("Help", language: appLanguage))
-                        .font(.title2.weight(.semibold))
-                    Text(L10n.text("Use the sidebar to switch between your financial sections. Market prices and exchange rates are refreshed when the relevant page is opened.", language: appLanguage))
-                        .foregroundStyle(.secondary)
+                HStack {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.title3.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .help(helpText("Back", "返回"))
+                    Spacer()
+                }
+
+                switch page {
+                case "Overview": overviewHelp
+                case "Portfolio": portfolioHelp
+                case "Dividends": dividendsHelp
+                case "Recurring Investment": recurringHelp
+                case "Foreign Currency": foreignCurrencyHelp
+                case "Income Statement": incomeStatementHelp
+                case "Settings": settingsHelp
+                default: recurringHoldingHelp
                 }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -3955,56 +4194,170 @@ struct HelpView: View {
         }
     }
 
-    private var overviewHelp: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text(L10n.text("Overview Guide", language: appLanguage))
-                .font(.title2.weight(.semibold))
+    private func helpText(_ english: String, _ chinese: String) -> String {
+        appLanguage == AppLanguage.traditionalChinese.rawValue ? chinese : english
+    }
 
-            helpSection(
-                title: L10n.text("What you see here", language: appLanguage),
-                body: L10n.text("Overview brings your financial picture together in one place.", language: appLanguage)
-            )
-
-            helpSection(
-                title: L10n.text("At a glance", language: appLanguage),
-                body: ["Total assets means everything you currently own, converted to NTD.", "Total liabilities means the money you currently owe.", "Net worth is your assets minus your liabilities."]
-                    .map { L10n.text($0, language: appLanguage) }
-                    .joined(separator: "\n")
-            )
-
-            helpSection(
-                title: L10n.text("Your details", language: appLanguage),
-                body: L10n.text("The sections below show where your money is held and what makes up each total. Investment values and foreign-currency balances are converted to NTD when possible.", language: appLanguage)
-            )
-
-            helpSection(
-                title: L10n.text("Changes over time", language: appLanguage),
-                body: L10n.text("The percentage below an item compares it with the previous month. You can hide these percentages in Settings.", language: appLanguage)
-            )
-
-            helpSection(
-                title: L10n.text("Adding information", language: appLanguage),
-                body: L10n.text("Use the + button beside a details card to add an asset or liability. Use the related page in the sidebar to add investments, foreign currency, or income and expenses.", language: appLanguage)
-            )
-
-            Text(L10n.text("When you open a related page, FinTrack tries to refresh market prices and exchange rates. If the network is unavailable, your saved local data remains available.", language: appLanguage))
-                .font(.footnote)
-                .foregroundStyle(FinTrackTheme.textMuted)
+    private func helpHeader(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(helpText(title, title == "Portfolio" ? "投資組合" : title == "Dividends" ? "股利" : title == "Recurring Investment" ? "定期定額" : title == "Foreign Currency" ? "外幣" : title == "Income Statement" ? "損益表" : title == "Settings" ? "設定" : "投資紀錄"))
+                .font(.title2.weight(.bold))
+            Text(helpText(subtitle, subtitle == "See how your investments are distributed and performing." ? "查看投資配置與整體表現。" : subtitle == "Review dividend income from your holdings." ? "查看持有資產帶來的股利收入。" : subtitle == "Plan recurring purchases and keep each purchase record in one place." ? "規劃定期定額，並集中管理每次投資紀錄。" : subtitle == "Track foreign-currency balances, rates, and transactions." ? "追蹤外幣餘額、匯率與交易紀錄。" : subtitle == "Organize income, expenses, and savings in one view." ? "在同一個頁面整理收入、支出與儲蓄。" : subtitle == "Adjust how FinTrack looks and behaves." ? "調整 FinTrack 的外觀與使用方式。" : "查看這項定期定額標的的投資紀錄。"))
+                .foregroundStyle(FinTrackTheme.textSecondary)
         }
     }
 
-    private func helpSection(title: String, body: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-            Text(body)
-                .foregroundStyle(FinTrackTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+    private var portfolioHelp: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            helpHeader("Portfolio", "See how your investments are distributed and performing.")
+            HelpSectionLabel(text: helpText("AT A GLANCE", "快速了解"))
+            HelpDefinitionSection(rows: [
+                (helpText("Total P&L", "總損益"), helpText("Your overall gain or loss based on recorded cost and current value.", "依照已記錄成本與目前市值計算整體獲利或損失。")),
+                (helpText("Today", "今日"), helpText("The change from the latest available market prices.", "依照目前可取得的市場價格計算今日變化。")),
+                (helpText("Market Value", "目前市值"), helpText("The current estimated value of all holdings.", "所有持股目前的估計價值。"))
+            ])
+            HelpSectionLabel(text: helpText("ALLOCATION", "資產配置"))
+            HelpIntroCard(title: helpText("Your investment mix", "你的投資配置"), description: helpText("The chart ranks holdings by portfolio weight. Colors represent ranking order, not profit or loss.", "圖表會依持股比重排序；顏色代表比重排名，不代表損益。"))
+            HelpSectionLabel(text: helpText("HOLDINGS", "持股明細"))
+            HelpDefinitionSection(rows: [
+                (helpText("Last", "現價"), helpText("The latest recorded market price.", "最近記錄的市場價格。")),
+                (helpText("Value", "市值"), helpText("Shares multiplied by the latest price.", "股數乘以最近價格。")),
+                (helpText("P&L", "損益"), helpText("The difference between current value and recorded cost.", "目前市值與已記錄成本之間的差額。"))
+            ])
+            HelpActionRow(symbol: "plus", title: helpText("Add a holding", "新增持股"), description: helpText("Use + in Holdings, then search for a symbol and enter its shares and cost.", "在持股區按下＋，搜尋標的後填入股數與成本。"))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
+    }
+
+    private var dividendsHelp: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            helpHeader("Dividends", "Review dividend income from your holdings.")
+            HelpSectionLabel(text: helpText("WHAT YOU SEE", "這裡會顯示什麼"))
+            HelpIntroCard(title: helpText("Dividend records", "股利紀錄"), description: helpText("Each row shows the security, the date you received the dividend, and the amount received. Values are kept in their original currency.", "每一列會顯示標的、你收到股利的日期與收到的金額，並保留原始幣別。"))
+            HelpSectionLabel(text: helpText("HOW TO USE IT", "使用方式"))
+            HelpDefinitionSection(rows: [
+                (helpText("Add", "新增"), helpText("Click + to choose a holding and record a dividend payment.", "按下＋選擇持股並記錄股利入帳。")),
+                (helpText("Edit or delete", "編輯或刪除"), helpText("Right-click a record to change it or remove it.", "在紀錄上按右鍵即可編輯或刪除。")),
+                (helpText("Currency", "幣別"), helpText("The currency follows the holding, so the amount is not silently converted.", "幣別會跟隨持股，不會在沒有提示的情況下轉換金額。"))
+            ])
+        }
+    }
+
+    private var recurringHelp: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            helpHeader("Recurring Investment", "Plan recurring purchases and keep each purchase record in one place.")
+            HelpSectionLabel(text: helpText("START HERE", "從這裡開始"))
+            HelpIntroCard(title: helpText("A plan and its actual purchases", "計畫與實際投資"), description: helpText("A recurring rule describes when and how much you plan to invest. The purchase records below it are the transactions that actually happened.", "定期定額規則描述預計何時、投入多少；下方投資紀錄則是實際發生的每一筆交易。"))
+            HelpSectionLabel(text: helpText("RECORDS", "紀錄"))
+            HelpDefinitionSection(rows: [
+                (helpText("Schedules", "排程"), helpText("Shows the planned amount, frequency, and day of the month.", "顯示預計金額、頻率與每月執行日。")),
+                (helpText("Purchases", "投資紀錄"), helpText("Add the actual date, shares, and amount after a purchase is completed.", "投資完成後，新增實際日期、股數與金額。")),
+                (helpText("Funding account", "扣款帳戶"), helpText("For foreign-currency investments, choose a matching foreign-currency account to update its balance and create a transaction record.", "外幣投資可選擇相同幣別的外幣帳戶，系統會同步更新餘額並建立交易紀錄。"))
+            ])
+            HelpActionRow(symbol: "plus", title: helpText("Add an actual purchase", "新增實際投資"), description: helpText("Open a recurring investment item, then click + in Purchases.", "開啟定期定額標的，再於投資紀錄旁按下＋。"))
+        }
+    }
+
+    private var recurringHoldingHelp: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            helpHeader("Recurring Investment", "View this recurring investment's purchase history.")
+            HelpSectionLabel(text: helpText("THIS INVESTMENT", "這項投資"))
+            HelpIntroCard(title: helpText("Schedules and purchases", "排程與投資紀錄"), description: helpText("Schedules show your plan. Purchases show what you actually invested, including the date, shares, and amount.", "排程顯示你的計畫；投資紀錄顯示實際投入的日期、股數與金額。"))
+            HelpSectionLabel(text: helpText("MANAGE RECORDS", "管理紀錄"))
+            HelpDefinitionSection(rows: [
+                (helpText("Add", "新增"), helpText("Click + to record a completed purchase.", "按下＋記錄已完成的投資。")),
+                (helpText("Edit or delete", "編輯或刪除"), helpText("Right-click a purchase to edit or delete it. Related balances are adjusted together.", "在投資紀錄上按右鍵即可編輯或刪除，相關餘額也會同步調整。"))
+            ])
+        }
+    }
+
+    private var foreignCurrencyHelp: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            helpHeader("Foreign Currency", "Track foreign-currency balances, rates, and transactions.")
+            HelpSectionLabel(text: helpText("BALANCES", "餘額"))
+            HelpDefinitionSection(rows: [
+                (helpText("Balance", "餘額"), helpText("The amount currently held in each foreign currency.", "目前持有的各種外幣金額。")),
+                (helpText("Rate", "匯率"), helpText("The latest NTD rate used for the displayed equivalent value.", "用來計算新台幣等價金額的最新匯率。")),
+                (helpText("NTD value", "新台幣等價"), helpText("The foreign-currency balance converted to NTD.", "將外幣餘額換算成新台幣後的金額。"))
+            ])
+            HelpSectionLabel(text: helpText("TRANSACTIONS", "交易紀錄"))
+            HelpIntroCard(title: helpText("Keep the money trail clear", "保留完整資金軌跡"), description: helpText("Use Exchange for a conversion that has an NTD amount and rate. Use Other for spending, investing, or income that only changes the foreign balance.", "換匯請選擇換匯並填寫新台幣金額與匯率；支出、投資或收入等只改變外幣餘額的情況，請選擇其他。"))
+            HelpActionRow(symbol: "plus", title: helpText("Add a transaction", "新增交易"), description: helpText("Click + beside Transactions. A negative foreign amount represents money leaving the account.", "按下交易紀錄旁的＋；原幣金額為負數代表資金離開帳戶。"))
+        }
+    }
+
+    private var incomeStatementHelp: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            helpHeader("Income Statement", "Organize income, expenses, and savings in one view.")
+            HelpSectionLabel(text: helpText("THE BIG PICTURE", "整體概況"))
+            HelpDefinitionSection(rows: [
+                (helpText("Total Income", "總收入"), helpText("All income items recorded for the selected period.", "所選期間內記錄的所有收入。")),
+                (helpText("Total Expenses", "總支出"), helpText("All expense items recorded for the selected period.", "所選期間內記錄的所有支出。")),
+                (helpText("Monthly Profit", "月結餘"), helpText("Income minus expenses for the period.", "該期間的收入減去支出。"))
+            ])
+            HelpSectionLabel(text: helpText("ORGANIZE YOUR MONEY", "整理你的金錢流向"))
+            HelpIntroCard(title: helpText("Groups and details", "分類與明細"), description: helpText("Use a group for a broad category, then add details underneath it. The totals of a group come from its details.", "先用大分類整理方向，再在下面建立明細；有明細的大分類會依明細自動加總。"))
+            HelpActionRow(symbol: "plus", title: helpText("Add a detail", "新增明細"), description: helpText("Use + in the relevant section. Right-click an item to edit or delete it.", "在對應區塊按下＋；在項目上按右鍵即可編輯或刪除。"))
+        }
+    }
+
+    private var settingsHelp: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            helpHeader("Settings", "Adjust how FinTrack looks and behaves.")
+            HelpSectionLabel(text: helpText("DISPLAY", "顯示"))
+            HelpDefinitionSection(rows: [
+                (helpText("Detail percentages", "明細百分比"), helpText("Show or hide month-over-month changes in asset and liability details.", "顯示或隱藏資產與負債明細的月增減百分比。")),
+                (helpText("Language", "語言"), helpText("Switch between English and Traditional Chinese.", "切換英文與繁體中文。")),
+                (helpText("Performance colors", "漲跌顏色"), helpText("Choose how positive and negative performance colors are presented.", "選擇正負績效的顏色呈現方式。")),
+                (helpText("Daily snapshot time", "每日快照時間"), helpText("Choose when FinTrack records the daily financial snapshot.", "選擇 FinTrack 記錄每日財務快照的時間。")),
+                (helpText("Appearance", "外觀"), helpText("Choose Light, Dark, or System. System follows the Mac's current appearance setting.", "選擇淺色、深色或跟隨系統；跟隨系統會使用 Mac 目前的外觀設定。"))
+            ])
+        }
+    }
+
+    private var overviewHelp: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text(L10n.text("Overview", language: appLanguage))
+                .font(.title2.weight(.bold))
+            Text(L10n.text("Understand your overall financial position.", language: appLanguage))
+                .foregroundStyle(FinTrackTheme.textSecondary)
+
+            HelpSectionLabel(text: L10n.text("OVERVIEW", language: appLanguage))
+            HelpIntroCard(
+                title: L10n.text("Your financial picture", language: appLanguage),
+                description: L10n.text("Overview brings your assets, liabilities, investments, and cash together in one financial snapshot.", language: appLanguage)
+            )
+
+            HelpSectionLabel(text: L10n.text("KEY METRICS", language: appLanguage))
+            HelpDefinitionSection(rows: [
+                (L10n.text("Total Assets", language: appLanguage), L10n.text("Everything you currently own, converted to NTD.", language: appLanguage)),
+                (L10n.text("Total Liabilities", language: appLanguage), L10n.text("Money you currently owe.", language: appLanguage)),
+                (L10n.text("Net Worth", language: appLanguage), L10n.text("Total Assets − Total Liabilities", language: appLanguage))
+            ])
+
+            HelpSectionLabel(text: L10n.text("YOUR DETAILS", language: appLanguage))
+            HelpDefinitionSection(rows: [
+                (L10n.text("Liquid Assets", language: appLanguage), L10n.text("Cash and other readily available funds.", language: appLanguage)),
+                (L10n.text("Liquid Investments", language: appLanguage), L10n.text("Investments that can generally be sold.", language: appLanguage)),
+                (L10n.text("Long-term Investment", language: appLanguage), L10n.text("Assets intended to be held longer.", language: appLanguage))
+            ])
+
+            HelpSectionLabel(text: L10n.text("CHANGES OVER TIME", language: appLanguage))
+            HelpDefinitionSection(rows: [
+                (L10n.text("Monthly Change", language: appLanguage), L10n.text("Compares the current value with the previous month. You can hide these percentages in Settings.", language: appLanguage))
+            ])
+
+            HelpSectionLabel(text: L10n.text("ADDING INFORMATION", language: appLanguage))
+            VStack(alignment: .leading, spacing: 4) {
+                HelpActionRow(symbol: "plus", title: L10n.text("Add an asset or liability", language: appLanguage), description: L10n.text("Use the + button in the corresponding details section.", language: appLanguage))
+                HelpActionRow(symbol: "chart.pie", title: L10n.text("Add investments", language: appLanguage), description: L10n.text("Open Portfolio from the sidebar.", language: appLanguage))
+                HelpActionRow(symbol: "globe.americas.fill", title: L10n.text("Add foreign currency", language: appLanguage), description: L10n.text("Open Foreign Currency from the sidebar.", language: appLanguage))
+            }
+
+            HelpInfoCallout(
+                title: L10n.text("Market data", language: appLanguage),
+                description: L10n.text("FinTrack refreshes market prices and exchange rates when possible. Saved local data remains available offline.", language: appLanguage)
+            )
+        }
     }
 }
 
@@ -4087,6 +4440,8 @@ struct RecurringHoldingDetailView: View {
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
     @State private var showingAddPurchase = false
     @State private var editingSchedule: DatabaseManager.RecurringSchedule?
+    @State private var editingPurchase: DatabaseManager.RecurringPurchaseRecord?
+    @State private var pendingDeletePurchase: DatabaseManager.RecurringPurchaseRecord?
     @State private var purchases: [DatabaseManager.RecurringPurchaseRecord] = []
 
     var body: some View {
@@ -4158,14 +4513,14 @@ struct RecurringHoldingDetailView: View {
                     Text(L10n.text("DATE", language: appLanguage)).frame(maxWidth: .infinity, alignment: .leading)
                     Text(L10n.text("SHARES", language: appLanguage)).frame(width: 120, alignment: .trailing)
                     Text(L10n.text("AMOUNT", language: appLanguage)).frame(width: 140, alignment: .trailing)
+                    Color.clear.frame(width: 58)
                 }
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 10)
 
-                ScrollView(.vertical) {
-                    LazyVStack(spacing: 0) {
+                VStack(spacing: 0) {
                         if purchases.isEmpty {
                             Text(L10n.text("No purchases recorded. Click + to add the actual transaction.", language: appLanguage))
                                 .foregroundStyle(.secondary)
@@ -4177,21 +4532,29 @@ struct RecurringHoldingDetailView: View {
                                     Text(String(format: "%.2f", purchase.shares)).frame(width: 120, alignment: .trailing)
                                     Text(money(purchase.amount, currency: purchase.currency))
                                         .frame(width: 140, alignment: .trailing)
+                                    Color.clear.frame(width: 58)
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 11)
+                                .contentShape(Rectangle())
+                                .contextMenu {
+                                    Button("Edit") { editingPurchase = purchase }
+                                    Divider()
+                                    Button("Delete", role: .destructive) { pendingDeletePurchase = purchase }
+                                }
                             }
                         }
-                    }
                 }
-                .frame(maxHeight: 420)
             }
             .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
-        .onAppear { purchases = appModel.recurringPurchases(holdingID: rule.holdingID) }
+        .id(rule.holdingID)
+        .task(id: rule.holdingID) {
+            purchases = appModel.recurringPurchases(holdingID: rule.holdingID)
+        }
         .sheet(isPresented: $showingAddPurchase) {
             AddRecurringPurchaseSheet(rule: rule) {
                 purchases = appModel.recurringPurchases(holdingID: rule.holdingID)
@@ -4199,6 +4562,24 @@ struct RecurringHoldingDetailView: View {
         }
         .sheet(item: $editingSchedule) { schedule in
             EditRecurringRuleSheet(schedule: schedule)
+        }
+        .sheet(item: $editingPurchase) { purchase in
+            EditRecurringPurchaseSheet(purchase: purchase) {
+                purchases = appModel.recurringPurchases(holdingID: rule.holdingID)
+            }
+        }
+        .alert(item: $pendingDeletePurchase) { purchase in
+            Alert(
+                title: Text("Delete purchase?"),
+                message: Text("This will also reverse its shares and cost from the holding."),
+                primaryButton: .destructive(Text("Delete")) {
+                    do {
+                        try appModel.deleteRecurringPurchase(id: purchase.id)
+                        purchases = appModel.recurringPurchases(holdingID: rule.holdingID)
+                    } catch { }
+                },
+                secondaryButton: .cancel()
+            )
         }
     }
 }
@@ -4275,18 +4656,31 @@ struct AddRecurringPurchaseSheet: View {
     let onSaved: () -> Void
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appModel: AppModel
-    @State private var tradeDate = Date()
+    @State private var tradeDate = Self.isoDateFormatter.string(from: Date())
     @State private var shares = ""
     @State private var amount = ""
+    @State private var fundingAssetID: Int64 = 0
     @State private var errorMessage: String?
+
+    private var fundingAssets: [DatabaseManager.AssetRecord] {
+        appModel.assets.filter { $0.category == "Foreign Currency" && $0.currency == rule.currency }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Record Purchase").font(.title2.weight(.bold))
             Text(rule.securityName).foregroundStyle(.secondary)
-            DatePicker("Purchase date", selection: $tradeDate, displayedComponents: .date)
+            TextField("Purchase date (yyyy-MM-dd)", text: $tradeDate)
+                .textFieldStyle(.roundedBorder)
             TextField("Shares", text: $shares).textFieldStyle(.roundedBorder)
             TextField("Amount (\(rule.currency))", text: $amount).textFieldStyle(.roundedBorder)
+            Picker("Funding account", selection: $fundingAssetID) {
+                Text("No linked account").tag(Int64(0))
+                ForEach(fundingAssets) { asset in
+                    Text("\(asset.name) (\(asset.currency))").tag(asset.id)
+                }
+            }
+            .pickerStyle(.menu)
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -4306,15 +4700,18 @@ struct AddRecurringPurchaseSheet: View {
             errorMessage = "Enter shares and amount greater than zero."
             return
         }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate]
+        guard Self.isoDateFormatter.date(from: tradeDate) != nil else {
+            errorMessage = "Enter the date as yyyy-MM-dd."
+            return
+        }
         do {
             try appModel.addRecurringPurchase(
                 holdingID: rule.holdingID,
-                tradeDate: formatter.string(from: tradeDate),
+                tradeDate: tradeDate,
                 shares: shareValue,
                 amount: amountValue,
-                currency: rule.currency
+                currency: rule.currency,
+                fundingAssetID: fundingAssetID == 0 ? nil : fundingAssetID
             )
             onSaved()
             dismiss()
@@ -4322,6 +4719,98 @@ struct AddRecurringPurchaseSheet: View {
             errorMessage = error.localizedDescription
         }
     }
+
+    private static let isoDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+}
+
+struct EditRecurringPurchaseSheet: View {
+    let purchase: DatabaseManager.RecurringPurchaseRecord
+    let onSaved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: AppModel
+    @State private var tradeDate: String
+    @State private var shares: String
+    @State private var amount: String
+    @State private var fundingAssetID: Int64
+    @State private var errorMessage: String?
+
+    private var fundingAssets: [DatabaseManager.AssetRecord] {
+        appModel.assets.filter { $0.category == "Foreign Currency" && $0.currency == purchase.currency }
+    }
+
+    init(purchase: DatabaseManager.RecurringPurchaseRecord, onSaved: @escaping () -> Void) {
+        self.purchase = purchase
+        self.onSaved = onSaved
+        _tradeDate = State(initialValue: purchase.tradeDate)
+        _shares = State(initialValue: String(purchase.shares))
+        _amount = State(initialValue: String(purchase.amount))
+        _fundingAssetID = State(initialValue: purchase.fundingAssetID ?? 0)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Edit Purchase").font(.title2.weight(.bold))
+            TextField("Purchase date (yyyy-MM-dd)", text: $tradeDate)
+                .textFieldStyle(.roundedBorder)
+            TextField("Shares", text: $shares)
+                .textFieldStyle(.roundedBorder)
+            TextField("Amount (\(purchase.currency))", text: $amount)
+                .textFieldStyle(.roundedBorder)
+            Picker("Funding account", selection: $fundingAssetID) {
+                Text("No linked account").tag(Int64(0))
+                ForEach(fundingAssets) { asset in
+                    Text("\(asset.name) (\(asset.currency))").tag(asset.id)
+                }
+            }
+            .pickerStyle(.menu)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save() }.buttonStyle(.borderedProminent)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+    }
+
+    private func save() {
+        guard Self.isoDateFormatter.date(from: tradeDate) != nil,
+              let shareValue = Double(shares), shareValue > 0,
+              let amountValue = Double(amount), amountValue > 0 else {
+            errorMessage = "Enter a valid date, shares, and amount."
+            return
+        }
+        do {
+            try appModel.updateRecurringPurchase(
+                id: purchase.id,
+                tradeDate: tradeDate,
+                shares: shareValue,
+                amount: amountValue,
+                fundingAssetID: fundingAssetID == 0 ? nil : fundingAssetID
+            )
+            onSaved()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private static let isoDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 struct AddRecurringRuleSheet: View {
