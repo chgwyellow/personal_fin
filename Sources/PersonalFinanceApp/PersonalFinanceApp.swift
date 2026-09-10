@@ -4158,10 +4158,12 @@ struct NetWorthHistoryCard: View {
                     }
                 }
                 .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                    AxisMarks(values: chartXAxisDates) { value in
                         AxisValueLabel {
                             if let date = value.as(Date.self) {
                                 Text(snapshotDateText(date, includeYear: chartSpansMultipleYears))
+                                    .frame(width: 64, alignment: .center)
+                                    .offset(x: -32)
                             }
                         }
                     }
@@ -4258,6 +4260,18 @@ struct NetWorthHistoryCard: View {
     private var chartSpansMultipleYears: Bool {
         guard let first = chartSnapshots.first?.date, let last = chartSnapshots.last?.date else { return false }
         return Calendar.current.component(.year, from: first) != Calendar.current.component(.year, from: last)
+    }
+
+    private var chartXAxisDates: [Date] {
+        let dates = chartSnapshots.map(\.date)
+        guard dates.count > 10 else { return dates }
+        // Keep labels tied to actual observations instead of automatic calendar
+        // ticks, which can fall between points. For long ranges show a readable
+        // subset while retaining both ends of the visible data.
+        let step = max(1, Int(ceil(Double(dates.count - 1) / 8.0)))
+        var selected = stride(from: 0, to: dates.count, by: step).map { dates[$0] }
+        if selected.last != dates.last { selected.append(dates.last!) }
+        return selected
     }
 
     private func createSnapshot() {
