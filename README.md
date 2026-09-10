@@ -10,6 +10,10 @@
 [![SQLite](https://img.shields.io/badge/SQLite-local-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+<p align="center">
+  <img src="docs/assets/fintrack-hero.png" alt="FinTrack Overview and Portfolio" width="100%">
+</p>
+
 <h3 align="center">Your finances. One clear picture.</h3>
 
 <p align="center">
