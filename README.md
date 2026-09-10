@@ -127,9 +127,9 @@ manually.
 ### Download step by step
 
 1. Open [GitHub Releases](https://github.com/chgwyellow/personal_fin/releases).
-2. Open the newest release, such as `v0.1.1`.
+2. Open the newest release, such as `v0.1.2`.
 3. Scroll to **Assets** and expand it if necessary.
-4. Download **`FinTrack-0.1.1.zip`**.
+4. Download **`FinTrack-0.1.2.zip`**.
 5. Open the downloaded ZIP from your Downloads folder.
 6. Move the extracted `FinTrack.app` to `/Applications`.
 7. Right-click the app and select **Open** on its first launch.
