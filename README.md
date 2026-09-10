@@ -175,5 +175,3 @@ Scheduled snapshots run while the Mac is available to run the app.
   automatic updater
 - Market-data availability depends on external public APIs and supported
   symbols
-- Recurring investment rules do not place trades or import brokerage data
-  automatically

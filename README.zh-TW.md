@@ -25,7 +25,7 @@ FinTrack 將個人財務中原本分散的資訊集中管理，讓你掌握完�
 
 需要計算目前價值時，FinTrack 會取得股價與匯率等外部公開資料；你手動輸入的資料、交易、餘額與快照則保留在本機。
 
-## 你可以用 FinTrack 做什麼
+## FinTrack 能為你做甚麼
 
 ### 掌握完整的財務狀況
 
@@ -132,9 +132,8 @@ cp "$HOME/Library/Application Support/FinTrack/personal_finance.db" \
 
 開啟相關頁面時，程式會更新股價與匯率。只要 Mac 能夠執行程式，定時快照就能依設定執行。
 
-## 已知限制
+## 當前限制
 
 - 僅支援 macOS；目前發布檔僅支援 Apple Silicon
 - 測試版尚未完成 Apple Developer ID 簽章、公證與自動更新
 - 股價資料取決於外部公開 API 與支援的股票代號
-- 定期投資功能不會自動下單，也不會自動匯入券商資料
