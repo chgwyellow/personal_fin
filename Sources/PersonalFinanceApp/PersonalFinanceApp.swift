@@ -55,6 +55,8 @@ final class AppModel: ObservableObject {
     @Published var snapshotError: String?
     private let databaseManager: DatabaseManager?
     private let marketDataClient = MarketDataClient()
+    private var marketStreamTask: Task<Void, Never>?
+    private var streamedSymbols: Set<String> = []
 
     init() {
         databaseManager = try? DatabaseManager()
@@ -371,9 +373,11 @@ final class AppModel: ObservableObject {
 
     func refreshMarketData() async {
         guard let databaseManager else { return }
+        guard !isRefreshingMarketData else { return }
         isRefreshingMarketData = true
         defer { isRefreshingMarketData = false }
         let records = holdingRecords
+        startMarketPriceStream()
         let formatter = ISO8601DateFormatter()
         let timestamp = formatter.string(from: Date())
         var dailyQuotes: [(DatabaseManager.HoldingRecord, MarketDataClient.Quote)] = []
@@ -384,7 +388,9 @@ final class AppModel: ObservableObject {
                     try databaseManager.insertMarketPrice(
                         symbol: holding.symbol,
                         market: holding.market,
-                        price: quote.currentPrice,
+                        // Yahoo's regularMarketPrice is intentionally used here.
+                        // PRE/POST market values are not part of FinTrack TODAY.
+                        price: quote.price,
                         currency: quote.currency,
                         observedAt: timestamp,
                         source: "Yahoo Finance"
@@ -443,7 +449,11 @@ final class AppModel: ObservableObject {
             let quoteRecord = freshQuotes[key]
             let cachedCurrentPrice: Double? = try? databaseManager.latestMarketPrice(symbol: holding.symbol, market: holding.market)
             let cachedPreviousClose: Double? = try? databaseManager.latestPreviousClose(symbol: holding.symbol, market: holding.market)
-            let currentPrice: Double = quoteRecord?.currentPrice ?? cachedCurrentPrice ?? 0
+            // A quote is normalized to the regular session price only.  After
+            // the session closes this is the latest regular close; if the
+            // network is unavailable, the last persisted regular price is the
+            // safe fallback.  Never use PRE/POST market values for TODAY.
+            let currentPrice: Double = quoteRecord?.price ?? cachedCurrentPrice ?? 0
             let previousClose: Double = quoteRecord?.previousClose ?? cachedPreviousClose ?? 0
             guard currentPrice > 0, previousClose > 0 else { continue }
             let rate = holding.currency == "NTD"
@@ -457,6 +467,81 @@ final class AppModel: ObservableObject {
         if hasValidResult {
             todayPLNTD = dailyPnL
             UserDefaults.standard.set(dailyPnL, forKey: "portfolio.todayPnl")
+        }
+    }
+
+    /// One shared stream is used for all holdings.  It accepts regular-session
+    /// ticks only; REST remains the initialization and recovery path.
+    func startMarketPriceStream() {
+        let symbols = Set(holdingRecords.map(\.symbol))
+        if symbols.isEmpty {
+            marketStreamTask?.cancel()
+            marketStreamTask = nil
+            streamedSymbols = []
+            return
+        }
+        guard symbols != streamedSymbols else { return }
+        marketStreamTask?.cancel()
+        streamedSymbols = symbols
+        let orderedSymbols = symbols.sorted()
+        marketStreamTask = Task { @MainActor [weak self] in
+            await self?.runMarketPriceStream(symbols: orderedSymbols)
+        }
+    }
+
+    private func runMarketPriceStream(symbols: [String]) async {
+        guard let url = URL(string: "wss://streamer.finance.yahoo.com/?version=2"),
+              let subscription = YahooMarketStream.subscribeMessage(symbols: symbols) else { return }
+
+        while !Task.isCancelled {
+            let socket = URLSession.shared.webSocketTask(with: url)
+            socket.resume()
+            do {
+                try await socket.send(.string(subscription))
+                while !Task.isCancelled {
+                    let message = try await socket.receive()
+                    guard case .data(let data) = message,
+                          let tick = YahooMarketStream.decode(data),
+                          tick.marketHours == 1 else { continue }
+                    applyMarketStreamTick(tick)
+                }
+            } catch {
+                socket.cancel(with: .goingAway, reason: nil)
+                if !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(5))
+                }
+            }
+        }
+    }
+
+    private func applyMarketStreamTick(_ tick: YahooMarketStream.Tick) {
+        guard let databaseManager,
+              let holding = holdingRecords.first(where: { $0.symbol == tick.symbol }) else { return }
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        do {
+            try databaseManager.insertMarketPrice(
+                symbol: holding.symbol,
+                market: holding.market,
+                price: tick.price,
+                currency: tick.currency ?? holding.currency,
+                observedAt: timestamp,
+                source: "Yahoo Finance WebSocket"
+            )
+            if let previousClose = tick.previousClose, previousClose > 0 {
+                try databaseManager.savePreviousClose(
+                    symbol: holding.symbol,
+                    market: holding.market,
+                    price: previousClose,
+                    currency: tick.currency ?? holding.currency,
+                    observedAt: timestamp
+                )
+            }
+            updateTodayProfitLoss(records: holdingRecords, quotes: [], databaseManager: databaseManager)
+            refreshHoldings()
+            refreshPortfolioTotals()
+            refreshAllocations()
+        } catch {
+            NSLog("FinTrack WebSocket price update failed for %@: %@", tick.symbol, error.localizedDescription)
         }
     }
 
@@ -1148,6 +1233,7 @@ enum L10n {
 }
 
 struct DashboardView: View {
+    @EnvironmentObject private var appModel: AppModel
     @State private var selectedPage = "Overview"
     @State private var helpPage = "Overview"
     @AppStorage("appearanceMode") private var appearanceMode = "system"
@@ -1204,6 +1290,9 @@ struct DashboardView: View {
         .onChange(of: activeAppearanceMode) { _, newMode in
             appearanceMode = newMode
             applyAppearance(newMode)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await appModel.refreshMarketData() }
         }
     }
 
@@ -1419,6 +1508,7 @@ struct DashboardContentView: View {
         .background(FinTrackTheme.appBackground)
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
+            appModel.startMarketPriceStream()
             if !showDetailChangesInitialized {
                 showDetailChanges = false
                 showDetailChangesInitialized = true

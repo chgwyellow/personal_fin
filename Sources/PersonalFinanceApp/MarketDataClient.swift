@@ -20,11 +20,6 @@ struct MarketDataClient {
         let price: Double
         let currency: String
         let previousClose: Double?
-        let extendedHoursPrice: Double?
-
-        var currentPrice: Double {
-            extendedHoursPrice ?? price
-        }
     }
 
     private struct ChartResponse: Decodable {
@@ -34,14 +29,20 @@ struct MarketDataClient {
         }
         struct Result: Decodable {
             let meta: Meta
+            let indicators: Indicators?
+        }
+        struct Indicators: Decodable {
+            let quote: [Quote]
+        }
+        struct Quote: Decodable {
+            let close: [Double?]
         }
         struct Meta: Decodable {
             let regularMarketPrice: Double?
             let currency: String?
             let regularMarketPreviousClose: Double?
             let previousClose: Double?
-            let preMarketPrice: Double?
-            let postMarketPrice: Double?
+            let chartPreviousClose: Double?
         }
     }
 
@@ -87,13 +88,31 @@ struct MarketDataClient {
             throw ClientError.invalidResponse
         }
         let decoded = try JSONDecoder().decode(ChartResponse.self, from: data)
-        guard let meta = decoded.chart.result?.first?.meta,
-              let price = meta.regularMarketPrice else { return nil }
+        guard let result = decoded.chart.result?.first,
+              let price = result.meta.regularMarketPrice else { return nil }
+        let meta = result.meta
+        let closes = result.indicators?.quote.first?.close.compactMap { $0 } ?? []
+        let historyPreviousClose: Double? = {
+            guard let latest = closes.last else { return nil }
+            // During an open session the last daily candle may still be empty,
+            // so the last valid close is the previous session. After close it
+            // matches regularMarketPrice, making the preceding close the
+            // previous session close.
+            if abs(latest - price) < 0.000001, closes.count >= 2 {
+                return closes[closes.count - 2]
+            }
+            return latest
+        }()
         return Quote(
             price: price,
             currency: meta.currency ?? "USD",
-            previousClose: meta.regularMarketPreviousClose ?? meta.previousClose,
-            extendedHoursPrice: meta.postMarketPrice ?? meta.preMarketPrice
+            // Prefer the close sequence from this chart response.  Yahoo's
+            // metadata previous-close fields can be stale independently of
+            // the regularMarketPrice.
+            previousClose: historyPreviousClose
+                ?? meta.chartPreviousClose
+                ?? meta.regularMarketPreviousClose
+                ?? meta.previousClose
         )
     }
 
