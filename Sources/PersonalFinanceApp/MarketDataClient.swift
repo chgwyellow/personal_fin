@@ -29,13 +29,6 @@ struct MarketDataClient {
         }
         struct Result: Decodable {
             let meta: Meta
-            let indicators: Indicators?
-        }
-        struct Indicators: Decodable {
-            let quote: [Quote]
-        }
-        struct Quote: Decodable {
-            let close: [Double?]
         }
         struct Meta: Decodable {
             let regularMarketPrice: Double?
@@ -91,28 +84,13 @@ struct MarketDataClient {
         guard let result = decoded.chart.result?.first,
               let price = result.meta.regularMarketPrice else { return nil }
         let meta = result.meta
-        let closes = result.indicators?.quote.first?.close.compactMap { $0 } ?? []
-        let historyPreviousClose: Double? = {
-            guard let latest = closes.last else { return nil }
-            // During an open session the last daily candle may still be empty,
-            // so the last valid close is the previous session. After close it
-            // matches regularMarketPrice, making the preceding close the
-            // previous session close.
-            if abs(latest - price) < 0.000001, closes.count >= 2 {
-                return closes[closes.count - 2]
-            }
-            return latest
-        }()
         return Quote(
             price: price,
             currency: meta.currency ?? "USD",
-            // Prefer the close sequence from this chart response.  Yahoo's
-            // metadata previous-close fields can be stale independently of
-            // the regularMarketPrice.
-            previousClose: historyPreviousClose
-                ?? meta.chartPreviousClose
-                ?? meta.regularMarketPreviousClose
-                ?? meta.previousClose
+            // This is the only API field FinTrack treats as the previous
+            // regular-session close. If Yahoo omits it, the caller falls
+            // back to the persisted value in previous_closes.
+            previousClose: meta.regularMarketPreviousClose
         )
     }
 
