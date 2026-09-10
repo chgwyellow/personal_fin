@@ -460,7 +460,6 @@ decision.
 
 Possible stack:
 
-- Python
 - SQLite
 - Lightweight prototype UI
 - External market/FX data source
@@ -800,7 +799,6 @@ Personal Finance can serve as a long-term practical project for
 learning:
 
 - Git / GitHub
-- Python engineering
 - SQL
 - Relational data modeling
 - SQLite
