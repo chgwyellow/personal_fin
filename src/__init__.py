@@ -1,1 +1,0 @@
-"""Personal finance application package."""
