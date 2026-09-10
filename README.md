@@ -2,50 +2,125 @@
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
-FinTrack is a privacy-first macOS personal finance app that brings your
-financial picture into one place. It helps you understand what you own, what
-you owe, how your investments are performing, and how your net worth changes
-over time.
+[![Version](https://img.shields.io/github/v/tag/chgwyellow/personal_fin?label=version)](https://github.com/chgwyellow/personal_fin/tags)
+[![Downloads](https://img.shields.io/github/downloads/chgwyellow/personal_fin/total?label=downloads)](https://github.com/chgwyellow/personal_fin/releases)
+[![macOS](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)](https://github.com/chgwyellow/personal_fin/releases)
+[![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)](https://www.swift.org/)
+[![SwiftUI](https://img.shields.io/badge/SwiftUI-native-orange?logo=swift&logoColor=white)](https://developer.apple.com/xcode/swiftui/)
+[![SQLite](https://img.shields.io/badge/SQLite-local-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-FinTrack is designed for people who want a clear personal overview without
-handing their financial information to an online account or subscription
-service. You can manage cash, investments, liabilities, dividends, recurring purchases,
-and foreign-currency balances while keeping the underlying data on your own
-Mac.
+<p align="center">
+  <img src="docs/assets/fintrack-hero.png" alt="FinTrack Overview and Portfolio" width="100%">
+</p>
 
-The app is built around a simple workflow: manage your financial details, let
-FinTrack calculate totals and investment values, then use snapshots and history
-to see how your overall position changes. Market prices and exchange rates are
-used where needed, while your manually entered information remains local.
+<h3 align="center">Your finances. One clear picture.</h3>
 
-## Features
+<p align="center">
+  A private, local-first personal finance app for macOS.<br>
+  Track what you own, what you owe, how your investments are performing,
+  and how your net worth changes over time.
+</p>
 
-- Track assets, liabilities, investments, and net worth
-- Create manual and scheduled net worth snapshots
-- View net worth history with selectable time ranges
-- Track Taiwan and U.S. stocks and ETFs in their original currencies
-- Track foreign-currency balances, rates, and transactions
-- View portfolio value, allocation, capital gains, and daily profit and loss
-- Manage recurring investment plans and actual purchases
-- Record dividend and income-statement items
-- Store all financial data locally in SQLite
+## Your financial life, in one place
 
-## What FinTrack does not do
+FinTrack brings the different parts of your personal finances together so you
+can understand your overall financial position without handing your financial
+information to an online account or subscription service.
 
-FinTrack is a personal tracking and analysis tool. It does not place orders,
-connect to brokerage accounts, or automatically import transactions. Completed
-investment transactions and recurring purchases must be entered manually.
+Manage cash, assets, liabilities, investments, dividends, recurring
+investments, and foreign-currency balances while keeping your financial
+database on your own Mac.
 
-## Why FinTrack
+Market prices and exchange rates are fetched when needed to calculate current
+values. Your manually entered information, transactions, balances, and
+snapshots remain stored locally.
 
-- **A complete financial overview:** See assets, liabilities, investments, and
-  net worth together instead of managing separate lists.
-- **Investment-aware tracking:** Follow stocks and ETFs, actual purchases,
-  dividends, recurring plans, market value, and daily profit and loss.
-- **Useful history:** Create snapshots and compare your financial position over
-  time, including month-over-month detail changes.
-- **Local by design:** No account or sign-in is required, and your financial
-  database stays on your Mac.
+## What you can do with FinTrack
+
+### See your complete financial picture
+
+Track assets, liabilities, investments, and net worth together instead of
+maintaining separate lists or spreadsheets. Create snapshots to see how your
+net worth changes over time.
+
+### Understand your investments
+
+Track Taiwan and U.S. stocks and ETFs in their original currencies. View
+portfolio value, allocation, capital gains, and daily profit and loss while
+keeping your actual purchase information locally.
+
+FinTrack is designed for portfolio tracking and personal financial analysis,
+not active trading.
+
+### Keep recurring investments organized
+
+Create recurring investment plans and enter the purchases you actually make.
+FinTrack keeps the investment plan separate from completed purchases so your
+portfolio reflects your actual holdings.
+
+### Track dividends and income
+
+Manage dividends and income-statement items alongside the rest of your
+financial information.
+
+### Manage foreign currencies
+
+Track foreign-currency balances, exchange rates, and transactions alongside
+your other assets.
+
+### Build a history of your net worth
+
+Create manual or scheduled net worth snapshots and view your history across
+selectable time ranges. Snapshots help you understand how your overall
+financial position changes instead of looking only at today's numbers.
+
+## Private by design
+
+FinTrack does not require an account or sign-in. It does not operate a backend
+server for storing user data. Your financial database is stored locally on
+your Mac using SQLite and is never uploaded to FinTrack.
+
+External public data sources are contacted only when information such as market
+prices or exchange rates is needed.
+
+> **Your financial information stays on your Mac.**
+
+## What FinTrack is — and what it isn't
+
+FinTrack is a **personal finance tracking and analysis tool**. It is designed
+to help answer questions such as:
+
+- What do I own?
+- What do I owe?
+- What is my current net worth?
+- How is my investment portfolio performing?
+- How is my money allocated?
+- How has my financial position changed over time?
+
+FinTrack is not a brokerage or trading terminal. It does not place stock
+orders, connect to brokerage accounts, automatically import brokerage
+transactions, move money, or execute recurring investments automatically.
+
+Completed investment transactions and recurring purchases must be entered
+manually.
+
+## Core features
+
+- **Financial Overview** — Track assets, liabilities, investments, and net worth
+  in one place
+- **Net Worth History** — Create manual and scheduled snapshots and view
+  historical changes
+- **Portfolio Tracking** — Track Taiwan and U.S. stocks and ETFs in their
+  original currencies
+- **Portfolio Analytics** — View portfolio value, allocation, capital gains,
+  and daily profit and loss
+- **Recurring Investments** — Manage recurring investment plans and completed
+  purchases
+- **Dividends & Income** — Manage dividends and income-statement items
+- **Foreign Currency** — Track foreign-currency balances, exchange rates, and
+  transactions
+- **Local Storage** — Store financial information locally using SQLite
 
 ## Download the test release
 
@@ -76,36 +151,31 @@ The database is stored at:
 ```
 
 Each macOS user account has its own database. Installing, moving, or updating
-the app does not remove this database. Back up the database before testing a
-new release:
+the app does not remove this database.
+
+Before testing a new release, back up the database:
 
 ```bash
 cp "$HOME/Library/Application Support/FinTrack/personal_finance.db" \
    "$HOME/Library/Application Support/FinTrack/personal_finance.backup.db"
 ```
 
-## How to use FinTrack
+## Getting started
 
 1. Add your assets and liabilities from **Overview**.
 2. Add stocks or ETFs from **Portfolio** and manage their actual purchases.
 3. Use **Recurring Investment** to manage recurring investment plans.
 4. Add foreign-currency balances and transactions from **Foreign Currency**.
-5. Create a snapshot from **Overview** to track your net worth history.
-6. Open **Help** inside the app for page-specific guidance.
+5. Create a snapshot from **Overview** to start tracking your net worth history.
+6. Open **Help** inside FinTrack for page-specific guidance.
 
 Market prices and exchange rates are refreshed when relevant pages are opened.
 Scheduled snapshots run while the Mac is available to run the app.
-
-## Privacy and data safety
-
-FinTrack does not require an account or sign-in. Financial data is stored only
-on the user's Mac and is not uploaded by FinTrack.
 
 ## Known limitations
 
 - macOS only; the current release artifact supports Apple Silicon only
 - The test release has no Apple Developer ID signature, notarization, or
   automatic updater
-- Market-data availability depends on external public APIs and supported symbols
-- Recurring investment rules do not place trades or import brokerage data
-  automatically
+- Market-data availability depends on external public APIs and supported
+  symbols
