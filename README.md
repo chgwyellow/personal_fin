@@ -60,8 +60,7 @@ app refreshes data when relevant views load or after a holding is added.
 
 ## Getting Started
 
-The project is currently under development and does not yet provide a signed
-installer. To build the macOS app:
+To build a local Apple Silicon app bundle:
 
 ```bash
 swift build -c release
@@ -70,6 +69,15 @@ cp .build/arm64-apple-macosx/release/PersonalFinanceApp \
   dist/FinTrack.app/Contents/MacOS/PersonalFinanceApp
 open dist/FinTrack.app
 ```
+
+To create a release ZIP and SHA-256 checksum:
+
+```bash
+bash scripts/package-app.sh 0.1.1
+```
+
+See [`docs/releasing.md`](docs/releasing.md) for Universal builds, signing,
+notarization, and data-safety checks.
 
 For development, run:
 
@@ -87,7 +95,7 @@ uv sync
 
 - Product name: FinTrack
 - Start date: 2026-09-02
-- Current version: 0.1.0 (development)
+- Current version: 0.1.1
 - Development platform: macOS
 - License: MIT License
 
