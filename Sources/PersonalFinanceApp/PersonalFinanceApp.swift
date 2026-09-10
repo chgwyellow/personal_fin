@@ -58,6 +58,7 @@ final class AppModel: ObservableObject {
 
     init() {
         databaseManager = try? DatabaseManager()
+        todayPLNTD = UserDefaults.standard.object(forKey: "portfolio.todayPnl") as? Double
         refreshAssets()
         refreshLiabilities()
         refreshHoldings()
@@ -383,11 +384,20 @@ final class AppModel: ObservableObject {
                     try databaseManager.insertMarketPrice(
                         symbol: holding.symbol,
                         market: holding.market,
-                        price: quote.price,
+                        price: quote.currentPrice,
                         currency: quote.currency,
                         observedAt: timestamp,
                         source: "Yahoo Finance"
                     )
+                    if let previousClose = quote.previousClose, previousClose > 0 {
+                        try databaseManager.savePreviousClose(
+                            symbol: holding.symbol,
+                            market: holding.market,
+                            price: previousClose,
+                            currency: quote.currency,
+                            observedAt: timestamp
+                        )
+                    }
                     dailyQuotes.append((holding, quote))
                 }
             } catch {
@@ -411,27 +421,43 @@ final class AppModel: ObservableObject {
             }
         }
 
-        var todayTotal = 0.0
-        var hasTodayData = false
-        for (holding, quote) in dailyQuotes {
-            guard let previousClose = quote.previousClose else { continue }
-            let rate: Double
-            if holding.currency == "NTD" {
-                rate = 1
-            } else {
-                    rate = (try? databaseManager.latestExchangeRate(base: holding.currency, quote: "NTD")) ?? 0
-                }
-                guard rate > 0 else { continue }
-                todayTotal += (quote.price - previousClose) * holding.shares * rate
-            hasTodayData = true
-        }
-        todayPLNTD = hasTodayData ? todayTotal : nil
+        updateTodayProfitLoss(records: records, quotes: dailyQuotes, databaseManager: databaseManager)
 
         refreshAssets()
         refreshHoldings()
         refreshPortfolioTotals()
         refreshAllocations()
         saveDailySnapshotIfDue()
+    }
+
+    private func updateTodayProfitLoss(
+        records: [DatabaseManager.HoldingRecord],
+        quotes: [(DatabaseManager.HoldingRecord, MarketDataClient.Quote)],
+        databaseManager: DatabaseManager
+    ) {
+        let freshQuotes = Dictionary(uniqueKeysWithValues: quotes.map { ("\($0.0.market)|\($0.0.symbol)", $0.1) })
+        var dailyPnL = 0.0
+        var hasValidResult = false
+        for holding in records {
+            let key = "\(holding.market)|\(holding.symbol)"
+            let quoteRecord = freshQuotes[key]
+            let cachedCurrentPrice: Double? = try? databaseManager.latestMarketPrice(symbol: holding.symbol, market: holding.market)
+            let cachedPreviousClose: Double? = try? databaseManager.latestPreviousClose(symbol: holding.symbol, market: holding.market)
+            let currentPrice: Double = quoteRecord?.currentPrice ?? cachedCurrentPrice ?? 0
+            let previousClose: Double = quoteRecord?.previousClose ?? cachedPreviousClose ?? 0
+            guard currentPrice > 0, previousClose > 0 else { continue }
+            let rate = holding.currency == "NTD"
+                ? 1
+                : ((try? databaseManager.latestExchangeRate(base: holding.currency, quote: "NTD")) ?? 0)
+            guard rate > 0 else { continue }
+            dailyPnL += (currentPrice - previousClose) * holding.shares * rate
+            hasValidResult = true
+        }
+        // A failed/empty refresh must not erase the last valid daily result.
+        if hasValidResult {
+            todayPLNTD = dailyPnL
+            UserDefaults.standard.set(dailyPnL, forKey: "portfolio.todayPnl")
+        }
     }
 
     func saveDailySnapshotIfDue() {
@@ -702,6 +728,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
             return
         }
+        if CommandLine.arguments.contains("--fintrack-today-baseline") {
+            Task {
+                await TodayBaselineBackgroundAgent.run()
+                NSApp.terminate(nil)
+            }
+            return
+        }
 
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
@@ -750,6 +783,53 @@ private enum SnapshotBackgroundAgent {
     }
 }
 
+private enum TodayBaselineBackgroundAgent {
+    static func run() async {
+        do {
+            let databaseManager = try DatabaseManager()
+            let holdings = try databaseManager.listHoldings()
+            let client = MarketDataClient()
+            var quotes: [(DatabaseManager.HoldingRecord, MarketDataClient.Quote)] = []
+            for holding in holdings {
+                if let quote = try await client.fetchQuote(symbol: holding.symbol) {
+                    quotes.append((holding, quote))
+                }
+            }
+            guard quotes.count == holdings.count, !holdings.isEmpty else { return }
+
+            for currency in Set(holdings.map(\.currency)).filter({ $0 != "NTD" }) {
+                if let rate = try await client.fetchExchangeRate(baseCurrency: currency) {
+                    try databaseManager.insertExchangeRate(
+                        base: currency, quote: "NTD", rate: rate,
+                        observedAt: ISO8601DateFormatter().string(from: Date()),
+                        source: "ExchangeRate-API"
+                    )
+                }
+            }
+            var baselineValue = 0.0
+            for (holding, quote) in quotes {
+                guard let previousClose = quote.previousClose else { return }
+                let rate = holding.currency == "NTD"
+                    ? 1
+                    : ((try databaseManager.latestExchangeRate(base: holding.currency, quote: "NTD")) ?? 0)
+                guard rate > 0 else { return }
+                baselineValue += previousClose * holding.shares * rate
+            }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
+            let formatter = DateFormatter()
+            formatter.calendar = calendar
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM-dd"
+            try databaseManager.savePortfolioDailyBaseline(
+                date: formatter.string(from: Date()), marketValueNTD: baselineValue
+            )
+        } catch {
+            NSLog("FinTrack TODAY baseline failed: %@", error.localizedDescription)
+        }
+    }
+}
+
 private enum SnapshotScheduler {
     private static let label = "com.fintrack.snapshot"
 
@@ -791,8 +871,28 @@ private enum SnapshotScheduler {
             let domain = "gui/\(getuid())"
             runLaunchctl(["bootout", domain, launchAgentURL.path])
             runLaunchctl(["bootstrap", domain, launchAgentURL.path])
+            installTodayBaselineAgent(executablePath: executablePath, domain: domain)
         } catch {
             NSLog("FinTrack snapshot scheduler setup failed: %@", error.localizedDescription)
+        }
+    }
+
+    private static func installTodayBaselineAgent(executablePath: String, domain: String) {
+        let url = launchAgentURL.deletingLastPathComponent().appendingPathComponent("com.fintrack.today-baseline.plist")
+        let agent: [String: Any] = [
+            "Label": "com.fintrack.today-baseline",
+            "ProgramArguments": [executablePath, "--fintrack-today-baseline"],
+            "StartCalendarInterval": ["Hour": 8, "Minute": 0],
+            "ProcessType": "Background",
+            "RunAtLoad": false
+        ]
+        do {
+            let data = try PropertyListSerialization.data(fromPropertyList: agent, format: .xml, options: 0)
+            try data.write(to: url, options: .atomic)
+            runLaunchctl(["bootout", domain, url.path])
+            runLaunchctl(["bootstrap", domain, url.path])
+        } catch {
+            NSLog("FinTrack TODAY scheduler setup failed: %@", error.localizedDescription)
         }
     }
 

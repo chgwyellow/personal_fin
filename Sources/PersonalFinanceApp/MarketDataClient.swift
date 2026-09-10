@@ -20,6 +20,11 @@ struct MarketDataClient {
         let price: Double
         let currency: String
         let previousClose: Double?
+        let extendedHoursPrice: Double?
+
+        var currentPrice: Double {
+            extendedHoursPrice ?? price
+        }
     }
 
     private struct ChartResponse: Decodable {
@@ -35,6 +40,8 @@ struct MarketDataClient {
             let currency: String?
             let regularMarketPreviousClose: Double?
             let previousClose: Double?
+            let preMarketPrice: Double?
+            let postMarketPrice: Double?
         }
     }
 
@@ -85,7 +92,8 @@ struct MarketDataClient {
         return Quote(
             price: price,
             currency: meta.currency ?? "USD",
-            previousClose: meta.regularMarketPreviousClose ?? meta.previousClose
+            previousClose: meta.regularMarketPreviousClose ?? meta.previousClose,
+            extendedHoursPrice: meta.postMarketPrice ?? meta.preMarketPrice
         )
     }
 

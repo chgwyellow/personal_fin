@@ -651,6 +651,25 @@ final class DatabaseManager {
         )
     }
 
+    func savePreviousClose(symbol: String, market: String, price: Double, currency: String, observedAt: String) throws {
+        let sql = """
+        INSERT INTO previous_closes (symbol, market, close_price, currency, observed_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(symbol, market) DO UPDATE SET
+            close_price = excluded.close_price,
+            currency = excluded.currency,
+            observed_at = excluded.observed_at;
+        """
+        try insertObservation(sql: sql, values: [symbol, market, String(price), currency, observedAt])
+    }
+
+    func latestPreviousClose(symbol: String, market: String) throws -> Double? {
+        try latestNumber(
+            sql: "SELECT close_price FROM previous_closes WHERE symbol = ? AND market = ? LIMIT 1;",
+            bindings: [symbol, market]
+        )
+    }
+
     /// Stores one exchange-rate observation.
     func insertExchangeRate(base: String, quote: String, rate: Double, observedAt: String, source: String) throws {
         try insertObservation(
@@ -1524,6 +1543,32 @@ final class DatabaseManager {
         return snapshots
     }
 
+    /// Saves the fixed 08:00 Asia/Taipei portfolio baseline once per day.
+    func savePortfolioDailyBaseline(date: String, marketValueNTD: Double) throws {
+        let sql = """
+        INSERT OR IGNORE INTO portfolio_daily_baselines (baseline_date, market_value_ntd)
+        VALUES (?, ?);
+        """
+        try executePrepared(sql) { statement in
+            let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, date, -1, transientDestructor)
+            sqlite3_bind_double(statement, 2, marketValueNTD)
+        }
+    }
+
+    func portfolioDailyBaseline(date: String) throws -> Double? {
+        let sql = "SELECT market_value_ntd FROM portfolio_daily_baselines WHERE baseline_date = ? LIMIT 1;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(databaseMessage)
+        }
+        let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, date, -1, transientDestructor)
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return sqlite3_column_double(statement, 0)
+    }
+
     private var databaseMessage: String {
         guard let database else { return "Unknown SQLite error" }
         return String(cString: sqlite3_errmsg(database))
@@ -1674,6 +1719,15 @@ final class DatabaseManager {
         source TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS previous_closes (
+        symbol TEXT NOT NULL,
+        market TEXT NOT NULL,
+        close_price NUMERIC NOT NULL,
+        currency TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        PRIMARY KEY (symbol, market)
+    );
+
     CREATE TABLE IF NOT EXISTS exchange_rates (
         id INTEGER PRIMARY KEY,
         base_currency TEXT NOT NULL,
@@ -1692,6 +1746,12 @@ final class DatabaseManager {
         net_worth_ntd NUMERIC NOT NULL,
         portfolio_value_ntd NUMERIC NOT NULL DEFAULT 0,
         asset_allocation_json TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS portfolio_daily_baselines (
+        baseline_date TEXT PRIMARY KEY,
+        market_value_ntd NUMERIC NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     """
