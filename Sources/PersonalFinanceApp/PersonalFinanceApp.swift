@@ -564,7 +564,8 @@ final class AppModel: ObservableObject {
             try databaseManager.saveSnapshot(
                 date: dateString,
                 assets: assetTotals,
-                liabilities: liabilityTotals
+                liabilities: liabilityTotals,
+                detailValues: (try? databaseManager.snapshotDetailValues()) ?? [:]
             )
             refreshSnapshots()
         } catch {
@@ -591,7 +592,8 @@ final class AppModel: ObservableObject {
             try databaseManager.saveSnapshot(
                 date: formatter.string(from: Date()),
                 assets: assetTotals,
-                liabilities: liabilityTotals
+                liabilities: liabilityTotals,
+                detailValues: (try? databaseManager.snapshotDetailValues()) ?? [:]
             )
             refreshSnapshots()
             snapshotError = nil
@@ -860,7 +862,8 @@ private enum SnapshotBackgroundAgent {
             try databaseManager.saveSnapshot(
                 date: dateString,
                 assets: try databaseManager.assetTotals(),
-                liabilities: try databaseManager.liabilityTotals()
+                liabilities: try databaseManager.liabilityTotals(),
+                detailValues: (try? databaseManager.snapshotDetailValues()) ?? [:]
             )
         } catch {
             NSLog("FinTrack background snapshot failed: %@", error.localizedDescription)
@@ -1205,7 +1208,7 @@ enum L10n {
         "Overview Guide": "總覽使用說明", "Understand your overall financial position.": "了解你的整體財務狀況。", "OVERVIEW": "總覽", "Your financial picture": "你的財務全貌", "Overview brings your assets, liabilities, investments, and cash together in one financial snapshot.": "總覽會把你的資產、負債、投資與現金集中在同一個財務快照中。", "KEY METRICS": "重要數字", "Everything you currently own, converted to NTD.": "你目前擁有的所有資產，並換算成新台幣。", "Money you currently owe.": "你目前需要償還的金額。", "Total Assets − Total Liabilities": "總資產 − 總負債", "YOUR DETAILS": "你的資產明細", "Cash and other readily available funds.": "現金及其他可以立即使用的資金。", "Investments that can generally be sold.": "通常可以出售變現的投資。", "Assets intended to be held longer.": "預計持有較長時間的資產。", "CHANGES OVER TIME": "查看變化", "Compares the current value with the previous month. You can hide these percentages in Settings.": "比較目前數值與上個月的差異，也可以在設定中關閉百分比。", "ADDING INFORMATION": "新增資料", "Add an asset or liability": "新增資產或負債", "Use the + button in the corresponding details section.": "使用對應明細區塊旁的＋按鈕。", "Add investments": "新增投資", "Open Portfolio from the sidebar.": "從左側邊欄開啟投資組合。", "Add foreign currency": "新增外幣", "Open Foreign Currency from the sidebar.": "從左側邊欄開啟外幣。", "Market data": "市場資料", "FinTrack refreshes market prices and exchange rates when possible. Saved local data remains available offline.": "FinTrack 會在可行時更新市場價格與匯率；沒有網路時，仍可使用已儲存的本機資料。",
         "Income": "收入", "Expenses": "支出", "Savings": "儲蓄", "Salary": "薪資",
         "Bonus": "獎金", "Side Income": "副業收入", "Base Salary": "本薪", "Overtime": "加班費",
-        "Freelance": "接案收入", "Necessary": "必要開銷", "Credit Card": "信用卡", "Daily Expenses": "日常花費",
+        "Freelance": "接案收入", "Necessary": "必要開銷", "Credit Card": "信用卡", "Loan": "貸款", "Mortgage": "房屋貸款", "Auto Loan": "車貸", "Personal Loan": "個人貸款", "Tax Payable": "稅款／應付款", "Daily Expenses": "日常花費",
         "Student Loan": "學貸", "Rent": "房租", "Utilities": "水電瓦斯網路", "Living Expenses": "生活費",
         "Principal": "本金", "Interest": "利息", "Apartment": "房租", "Electricity": "電費",
         "Internet": "網路費", "Food": "餐費", "Transportation": "交通費", "Investment": "投資金",
@@ -1218,7 +1221,7 @@ enum L10n {
         "Turn this off to hide month-over-month percentages in asset and liability details.": "關閉後，資產與負債明細將隱藏月增減百分比。",
         "Language": "語言", "English": "英文", "Traditional Chinese": "繁體中文", "Total": "合計",
         "Add Asset": "新增資產", "Asset name": "資產名稱", "Asset Name": "資產名稱",
-        "Category": "分類", "Asset group": "資產大分類", "Subcategory": "子分類", "Currency": "幣別", "Amount (NTD)": "金額（新台幣）",
+        "Category": "分類", "Asset group": "資產分類", "Subcategory": "子分類", "Currency": "幣別", "Amount (NTD)": "金額（新台幣）",
         "Original amount": "原幣金額", "Initial NTD cost": "初始新台幣成本", "Current balance cost basis (NTD)": "目前餘額成本基礎（新台幣）", "Average exchange rate": "平均匯率",
         "Only exchange or opening-fund cost is included. Dividends and investment gains are recorded separately.": "只有換匯或初始入金成本會計入；股息與投資收益會獨立記錄。",
         "Cancel": "取消", "Save": "儲存", "Add Liability": "新增負債", "Liability name": "負債名稱",
@@ -2136,9 +2139,9 @@ struct OverviewView: View {
     var body: some View {
         VStack(spacing: 16) {
             HStack(spacing: 16) {
-                MetricCard(title: "Total Assets", value: ntd(appModel.assetTotals.total), change: "0.0% vs last month")
-                MetricCard(title: "Total Liabilities", value: ntd(appModel.liabilityTotals.total), change: "0.0% vs last month")
-                MetricCard(title: "Net Worth", value: ntd(appModel.assetTotals.total - appModel.liabilityTotals.total), change: "0.0% vs last month")
+                MetricCard(title: "Total Assets", value: ntd(appModel.assetTotals.total), change: percentageChange(appModel.assetTotals.total, previousValue(for: "totalAssets")) + " vs last month")
+                MetricCard(title: "Total Liabilities", value: ntd(appModel.liabilityTotals.total), change: percentageChange(appModel.liabilityTotals.total, previousValue(for: "totalLiabilities")) + " vs last month")
+                MetricCard(title: "Net Worth", value: ntd(appModel.assetTotals.total - appModel.liabilityTotals.total), change: percentageChange(appModel.assetTotals.total - appModel.liabilityTotals.total, previousValue(for: "netWorth")) + " vs last month")
             }
             .padding(.horizontal, 24)
 
@@ -2192,18 +2195,18 @@ struct OverviewView: View {
 
     private var assetSections: [DetailSection] {
         [
-            DetailSection(title: "Liquid Assets", value: ntd(appModel.assetTotals.liquidAsset), change: "0.0%", children: children(for: "liquid_asset")),
-            DetailSection(title: "Liquid Investments", value: ntd(appModel.assetTotals.liquidInvestment), change: "0.0%", children: children(for: "liquid_investment")),
-            DetailSection(title: "Long-term Investment", value: ntd(appModel.assetTotals.longTermInvestment), change: "0.0%", children: children(for: "long_term_investment")),
-            DetailSection(title: "Other Assets", value: ntd(appModel.assetTotals.otherAsset), change: "0.0%", children: children(for: "other_asset"))
+            DetailSection(title: "Liquid Assets", value: ntd(appModel.assetTotals.liquidAsset), change: percentageChange(appModel.assetTotals.liquidAsset, previousValue(for: "assetGroup|liquid_asset")), children: children(for: "liquid_asset")),
+            DetailSection(title: "Liquid Investments", value: ntd(appModel.assetTotals.liquidInvestment), change: percentageChange(appModel.assetTotals.liquidInvestment, previousValue(for: "assetGroup|liquid_investment")), children: children(for: "liquid_investment")),
+            DetailSection(title: "Long-term Investment", value: ntd(appModel.assetTotals.longTermInvestment), change: percentageChange(appModel.assetTotals.longTermInvestment, previousValue(for: "assetGroup|long_term_investment")), children: children(for: "long_term_investment")),
+            DetailSection(title: "Other Assets", value: ntd(appModel.assetTotals.otherAsset), change: percentageChange(appModel.assetTotals.otherAsset, previousValue(for: "assetGroup|other_asset")), children: children(for: "other_asset"))
         ]
     }
 
     private var liabilitySections: [DetailSection] {
         [
-            DetailSection(title: "Short-term Liabilities", value: ntd(appModel.liabilityTotals.shortTerm), change: "0.0%", children: liabilityChildren(for: "short_term")),
-            DetailSection(title: "Long-term Liabilities", value: ntd(appModel.liabilityTotals.longTerm), change: "0.0%", children: liabilityChildren(for: "long_term")),
-            DetailSection(title: "Total Liabilities", value: ntd(appModel.liabilityTotals.total), change: "0.0%")
+            DetailSection(title: "Short-term Liabilities", value: ntd(appModel.liabilityTotals.shortTerm), change: percentageChange(appModel.liabilityTotals.shortTerm, previousValue(for: "liabilityGroup|short_term")), children: liabilityChildren(for: "short_term")),
+            DetailSection(title: "Long-term Liabilities", value: ntd(appModel.liabilityTotals.longTerm), change: percentageChange(appModel.liabilityTotals.longTerm, previousValue(for: "liabilityGroup|long_term")), children: liabilityChildren(for: "long_term")),
+            DetailSection(title: "Total Liabilities", value: ntd(appModel.liabilityTotals.total), change: percentageChange(appModel.liabilityTotals.total, previousValue(for: "totalLiabilities")))
         ]
     }
 
@@ -2222,7 +2225,12 @@ struct OverviewView: View {
                 return DetailRow(
                     name: name,
                     value: ntd(appModel.assetCategoryTotals["\(group)|\(name)"] ?? asset?.ntdValue ?? 0),
-                    change: "0.0%",
+                    change: percentageChange(
+                        appModel.assetCategoryTotals["\(group)|\(name)"] ?? asset?.ntdValue ?? 0,
+                        previousValue(for: appModel.assetCategoryTotals["\(group)|\(name)"] != nil
+                            ? "assetGroup|\(group)|\(name)"
+                            : "asset|\(group)|\(name)")
+                    ),
                     onDelete: asset.map { record in { appModel.deleteAsset(id: record.id) } },
                     onEdit: asset.map { record in { editingAsset = record } }
                 )
@@ -2238,11 +2246,42 @@ struct OverviewView: View {
                     value: liability.currency == "NTD"
                         ? ntd(liability.balance)
                         : "\(liability.currency) \(liability.balance)",
-                    change: "0.0%",
+                    change: percentageChange(liability.balance, previousValue(for: "liability|\(group)|\(liability.name)")),
                     onDelete: { appModel.deleteLiability(id: liability.id) },
                     onEdit: { editingLiability = liability }
                 )
             }
+    }
+
+    private var monthlyBaseline: DatabaseManager.Snapshot? {
+        guard let latest = appModel.snapshots.last,
+              let currentDate = snapshotDate(latest.date),
+              let cutoff = Calendar.current.date(byAdding: .month, value: -1, to: currentDate) else { return nil }
+        return appModel.snapshots.last { snapshot in
+            guard let date = snapshotDate(snapshot.date) else { return false }
+            return date <= cutoff
+        }
+    }
+
+    private func previousValue(for key: String) -> Double? {
+        if key == "totalAssets" { return monthlyBaseline?.totalAssets }
+        if key == "totalLiabilities" { return monthlyBaseline?.totalLiabilities }
+        if key == "netWorth" { return monthlyBaseline?.netWorth }
+        return monthlyBaseline?.detailValues[key]
+    }
+
+    private func percentageChange(_ current: Double, _ previous: Double?) -> String {
+        guard let previous, previous != 0 else { return "—" }
+        let change = (current - previous) / abs(previous) * 100
+        return String(format: "%+.1f%%", change)
+    }
+
+    private func snapshotDate(_ value: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: value)
     }
 }
 
@@ -2330,6 +2369,17 @@ private func performanceColor(isNegative: Bool, mode: String) -> Color {
     default: return isNegative ? FinTrackTheme.negative : FinTrackTheme.positive
     }
 }
+
+private let liabilityCategoryOptions = [
+    "Loan",
+    "Credit Card",
+    "Mortgage",
+    "Auto Loan",
+    "Personal Loan",
+    "Student Loan",
+    "Tax Payable",
+    "Other"
+]
 
 struct AddAssetSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -2486,8 +2536,12 @@ struct AddLiabilitySheet: View {
             }
             .pickerStyle(.menu)
 
-            TextField(L10n.text("Category", language: appLanguage), text: $category)
-                .textFieldStyle(.roundedBorder)
+            Picker(L10n.text("Category", language: appLanguage), selection: $category) {
+                ForEach(liabilityCategoryOptions, id: \.self) { option in
+                    Text(L10n.text(option, language: appLanguage)).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
 
             Picker(L10n.text("Currency", language: appLanguage), selection: $currency) {
                 ForEach(currencies, id: \.self) { currency in
@@ -2640,6 +2694,7 @@ struct EditLiabilitySheet: View {
     @State private var balance: String
     @State private var interestRate: String
     @State private var errorMessage: String?
+    @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     private let groups = ["Short-term Liability", "Long-term Liability"]
     private let currencies = ["NTD", "USD", "JPY"]
@@ -2648,7 +2703,7 @@ struct EditLiabilitySheet: View {
         self.liability = liability
         _name = State(initialValue: liability.name)
         _group = State(initialValue: liability.liabilityGroup == "short_term" ? "Short-term Liability" : "Long-term Liability")
-        _category = State(initialValue: liability.category)
+        _category = State(initialValue: liabilityCategoryOptions.contains(liability.category) ? liability.category : "Other")
         _currency = State(initialValue: liability.currency)
         _balance = State(initialValue: String(liability.balance))
         _interestRate = State(initialValue: liability.interestRate.map { String($0) } ?? "")
@@ -2662,7 +2717,12 @@ struct EditLiabilitySheet: View {
                 ForEach(groups, id: \.self) { Text($0).tag($0) }
             }
             .pickerStyle(.menu)
-            TextField("Category", text: $category).textFieldStyle(.roundedBorder)
+            Picker(L10n.text("Category", language: appLanguage), selection: $category) {
+                ForEach(liabilityCategoryOptions, id: \.self) { option in
+                    Text(L10n.text(option, language: appLanguage)).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
             Picker("Currency", selection: $currency) {
                 ForEach(currencies, id: \.self) { Text($0).tag($0) }
             }
@@ -4869,7 +4929,7 @@ struct HelpView: View {
             HelpSectionLabel(text: helpText("AT A GLANCE", "快速了解"))
             HelpDefinitionSection(rows: [
                 (helpText("Total P&L", "總損益"), helpText("Your overall gain or loss based on recorded cost and current value.", "依照已記錄成本與目前市值計算整體獲利或損失。")),
-                (helpText("Today", "今日"), helpText("The change from the latest available market prices.", "依照目前可取得的市場價格計算今日變化。")),
+                (helpText("Today", "今日"), helpText("The change from the latest regular-session price to the previous regular trading session's close. During regular hours it can update; after close it keeps the completed session result.", "以最新正常交易時段價格，減去前一個正常交易日的收盤價。交易時段內會更新，收盤後會保留該交易日的完成結果。")),
                 (helpText("Market Value", "目前市值"), helpText("The current estimated value of all holdings.", "所有持股目前的估計價值。"))
             ])
             HelpSectionLabel(text: helpText("ALLOCATION", "資產配置"))
@@ -4880,6 +4940,8 @@ struct HelpView: View {
                 (helpText("Value", "市值"), helpText("Shares multiplied by the latest price.", "股數乘以最近價格。")),
                 (helpText("P&L", "損益"), helpText("The difference between current value and recorded cost.", "目前市值與已記錄成本之間的差額。"))
             ])
+            HelpSectionLabel(text: helpText("MARKET DATA", "市場資料"))
+            HelpIntroCard(title: helpText("Regular-session prices", "正常交易時段價格"), description: helpText("FinTrack uses regular-session prices only. Prices update automatically while the app is active; if the stream or network is unavailable, the latest valid local data is used.", "FinTrack 只使用正常交易時段價格。App 開啟時會自動更新；若串流或網路無法使用，則沿用本機最近的有效資料。"))
             HelpActionRow(symbol: "plus", title: helpText("Add a holding", "新增持股"), description: helpText("Use + in Holdings, then search for a symbol and enter its shares and cost.", "在持股區按下＋，搜尋標的後填入股數與成本。"))
         }
     }
@@ -4909,7 +4971,8 @@ struct HelpView: View {
                 (helpText("Purchases", "投資紀錄"), helpText("Add the actual date, shares, and amount after a purchase is completed.", "投資完成後，新增實際日期、股數與金額。")),
                 (helpText("Funding account", "扣款帳戶"), helpText("For foreign-currency investments, choose a matching foreign-currency account to update its balance and create a transaction record.", "外幣投資可選擇相同幣別的外幣帳戶，系統會同步更新餘額並建立交易紀錄。"))
             ])
-            HelpActionRow(symbol: "plus", title: helpText("Add an actual purchase", "新增實際投資"), description: helpText("Open a recurring investment item, then click + in Purchases.", "開啟定期定額標的，再於投資紀錄旁按下＋。"))
+            HelpActionRow(symbol: "plus", title: helpText("Add an actual purchase", "新增實際投資"), description: helpText("Open a recurring investment item, then click + in Purchases. The schedule does not place orders automatically.", "開啟定期定額標的，再於投資紀錄旁按下＋；排程本身不會自動下單。"))
+            HelpInfoCallout(title: helpText("Important", "重要提醒"), description: helpText("A schedule is a plan only. Record the actual shares, amount, and date after the purchase is completed.", "排程只是投資計畫；完成實際交易後，仍需手動記錄股數、金額與日期。"))
         }
     }
 
@@ -4921,7 +4984,8 @@ struct HelpView: View {
             HelpSectionLabel(text: helpText("MANAGE RECORDS", "管理紀錄"))
             HelpDefinitionSection(rows: [
                 (helpText("Add", "新增"), helpText("Click + to record a completed purchase.", "按下＋記錄已完成的投資。")),
-                (helpText("Edit or delete", "編輯或刪除"), helpText("Right-click a purchase to edit or delete it. Related balances are adjusted together.", "在投資紀錄上按右鍵即可編輯或刪除，相關餘額也會同步調整。"))
+                (helpText("Edit or delete", "編輯或刪除"), helpText("Right-click a purchase to edit or delete it. Related balances are adjusted together.", "在投資紀錄上按右鍵即可編輯或刪除，相關餘額也會同步調整。")),
+                (helpText("Schedule vs purchase", "排程與實際投資"), helpText("Editing a schedule changes the plan; it does not change existing purchase records.", "編輯排程只會改變投資計畫，不會改變既有的實際投資紀錄。"))
             ])
         }
     }
@@ -4937,7 +5001,7 @@ struct HelpView: View {
             ])
             HelpSectionLabel(text: helpText("TRANSACTIONS", "交易紀錄"))
             HelpIntroCard(title: helpText("Keep the money trail clear", "保留完整資金軌跡"), description: helpText("Use Exchange for a conversion that has an NTD amount and rate. Use Other for spending, investing, or income that only changes the foreign balance.", "換匯請選擇換匯並填寫新台幣金額與匯率；支出、投資或收入等只改變外幣餘額的情況，請選擇其他。"))
-            HelpActionRow(symbol: "plus", title: helpText("Add a transaction", "新增交易"), description: helpText("Click + beside Transactions. A negative foreign amount represents money leaving the account.", "按下交易紀錄旁的＋；原幣金額為負數代表資金離開帳戶。"))
+            HelpActionRow(symbol: "plus", title: helpText("Add a transaction", "新增交易"), description: helpText("Click + beside Transactions. A negative foreign amount represents money leaving the account. Balances and rates refresh when market data is updated.", "按下交易紀錄旁的＋；原幣金額為負數代表資金離開帳戶。市場資料更新時，餘額與匯率也會刷新。"))
         }
     }
 
@@ -4964,7 +5028,8 @@ struct HelpView: View {
                 (helpText("Detail percentages", "明細百分比"), helpText("Show or hide month-over-month changes in asset and liability details.", "顯示或隱藏資產與負債明細的月增減百分比。")),
                 (helpText("Language", "語言"), helpText("Switch between English and Traditional Chinese.", "切換英文與繁體中文。")),
                 (helpText("Performance colors", "漲跌顏色"), helpText("Choose how positive and negative performance colors are presented.", "選擇正負績效的顏色呈現方式。")),
-                (helpText("Daily snapshot time", "每日快照時間"), helpText("Choose when FinTrack records the daily financial snapshot.", "選擇 FinTrack 記錄每日財務快照的時間。")),
+                (helpText("Daily snapshot time", "每日快照時間"), helpText("Choose when FinTrack automatically records the net-worth snapshot. This setting does not define the Portfolio TODAY calculation time.", "選擇 FinTrack 自動記錄淨值快照的時間；這項設定不會決定投資組合 TODAY 的計算時間。")),
+                (helpText("Background schedule", "背景排程"), helpText("The Mac must be powered on and FinTrack must be allowed to run in the user's active session. If the scheduled run is missed, it can be recovered when FinTrack runs again.", "Mac 必須開機，且 FinTrack 能在使用者目前的工作階段執行。若錯過排程，之後再次執行 FinTrack 時可以補回。")),
                 (helpText("Appearance", "外觀"), helpText("Choose Light, Dark, or System. System follows the Mac's current appearance setting.", "選擇淺色、深色或跟隨系統；跟隨系統會使用 Mac 目前的外觀設定。"))
             ])
         }
@@ -5005,7 +5070,10 @@ struct HelpView: View {
             HelpSectionLabel(text: helpText("NET WORTH HISTORY", "淨值歷史"))
             HelpDefinitionSection(rows: [
                 (helpText("Snapshot", "快照"), helpText("Records your current net worth as a historical data point.", "將目前淨值記錄成一筆歷史資料。")),
-                (helpText("Same-day snapshots", "同日快照"), helpText("Creating more than one snapshot on the same day does not create multiple records. The latest snapshot replaces that day's data.", "同一天建立多次快照不會產生多筆資料，最新的快照會覆蓋當天資料。"))
+                (helpText("Same-day snapshots", "同日快照"), helpText("Creating more than one snapshot on the same day does not create multiple records. The latest snapshot replaces that day's data.", "同一天建立多次快照不會產生多筆資料，最新的快照會覆蓋當天資料。")),
+                (helpText("Chart ranges", "圖表區間"), helpText("Choose a time range. Longer ranges can be scrolled horizontally to view older points.", "選擇要查看的時間區間；較長的區間可以左右滑動查看較早的資料。")),
+                (helpText("Chart details", "圖表資訊"), helpText("Move the pointer onto a data point to see its net worth and date.", "將游標移到資料點上，即可查看該日的淨值與日期。")),
+                (helpText("Automatic snapshots", "自動快照"), helpText("The scheduled snapshot records net worth automatically. The Snapshot button creates one immediately.", "定時快照會自動記錄淨值；按下快照按鈕則會立即建立一筆資料。"))
             ])
 
             HelpSectionLabel(text: L10n.text("ADDING INFORMATION", language: appLanguage))

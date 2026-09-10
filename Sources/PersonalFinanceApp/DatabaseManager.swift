@@ -61,6 +61,7 @@ final class DatabaseManager {
         let totalAssets: Double
         let totalLiabilities: Double
         let netWorth: Double
+        let detailValues: [String: Double]
 
         var id: String { date }
     }
@@ -361,6 +362,7 @@ final class DatabaseManager {
             try addRecurringPurchaseFundingColumnIfNeeded()
             try addRecurringPurchaseTransactionColumnsIfNeeded()
             try addForeignTransactionSourceColumnIfNeeded()
+            try normalizeLegacyLiabilityCategories()
             try backfillRecurringPurchaseForeignTransactions()
             try removeHoldingMarketConstraintIfNeeded()
         } catch {
@@ -1475,16 +1477,24 @@ final class DatabaseManager {
     }
 
     /// Stores one daily financial snapshot for historical comparisons.
-    func saveSnapshot(date: String, assets: AssetTotals, liabilities: LiabilityTotals) throws {
+    func saveSnapshot(
+        date: String,
+        assets: AssetTotals,
+        liabilities: LiabilityTotals,
+        detailValues: [String: Double] = [:]
+    ) throws {
+        let detailData = try JSONEncoder().encode(detailValues)
+        let detailJSON = String(decoding: detailData, as: UTF8.self)
         let sql = """
         INSERT INTO snapshots
             (snapshot_date, total_assets_ntd, total_liabilities_ntd, net_worth_ntd,
-             portfolio_value_ntd)
-        VALUES (?, ?, ?, ?, 0)
+             portfolio_value_ntd, asset_allocation_json)
+        VALUES (?, ?, ?, ?, 0, ?)
         ON CONFLICT(snapshot_date) DO UPDATE SET
             total_assets_ntd = excluded.total_assets_ntd,
             total_liabilities_ntd = excluded.total_liabilities_ntd,
-            net_worth_ntd = excluded.net_worth_ntd;
+            net_worth_ntd = excluded.net_worth_ntd,
+            asset_allocation_json = excluded.asset_allocation_json;
         """
         try executePrepared(sql) { statement in
             let transientDestructor = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -1492,13 +1502,37 @@ final class DatabaseManager {
             sqlite3_bind_double(statement, 2, assets.total)
             sqlite3_bind_double(statement, 3, liabilities.total)
             sqlite3_bind_double(statement, 4, assets.total - liabilities.total)
+            sqlite3_bind_text(statement, 5, detailJSON, -1, transientDestructor)
         }
+    }
+
+    /// Returns the values used by Overview's month-over-month detail comparison.
+    func snapshotDetailValues() throws -> [String: Double] {
+        var values: [String: Double] = [:]
+        let totals = try assetTotals()
+        values["assetGroup|liquid_asset"] = totals.liquidAsset
+        values["assetGroup|liquid_investment"] = totals.liquidInvestment
+        values["assetGroup|long_term_investment"] = totals.longTermInvestment
+        values["assetGroup|other_asset"] = totals.otherAsset
+        for (key, value) in try assetCategoryTotals() {
+            values["assetGroup|\(key)"] = value
+        }
+        let liabilityTotals = try liabilityTotals()
+        values["liabilityGroup|short_term"] = liabilityTotals.shortTerm
+        values["liabilityGroup|long_term"] = liabilityTotals.longTerm
+        for asset in try listAssets() {
+            values["asset|\(asset.assetGroup)|\(asset.name)"] = asset.ntdValue
+        }
+        for liability in try listLiabilities() where liability.currency == "NTD" {
+            values["liability|\(liability.liabilityGroup)|\(liability.name)"] = liability.balance
+        }
+        return values
     }
 
     /// Returns the most recent snapshot before the supplied date.
     func previousSnapshot(before date: String) throws -> Snapshot? {
         let sql = """
-        SELECT snapshot_date, total_assets_ntd, total_liabilities_ntd, net_worth_ntd
+        SELECT snapshot_date, total_assets_ntd, total_liabilities_ntd, net_worth_ntd, asset_allocation_json
         FROM snapshots
         WHERE snapshot_date < ?
         ORDER BY snapshot_date DESC
@@ -1516,7 +1550,8 @@ final class DatabaseManager {
             date: String(cString: sqlite3_column_text(statement, 0)),
             totalAssets: sqlite3_column_double(statement, 1),
             totalLiabilities: sqlite3_column_double(statement, 2),
-            netWorth: sqlite3_column_double(statement, 3)
+            netWorth: sqlite3_column_double(statement, 3),
+            detailValues: [:]
         )
     }
 
@@ -1533,11 +1568,14 @@ final class DatabaseManager {
         }
         var snapshots: [Snapshot] = []
         while sqlite3_step(statement) == SQLITE_ROW {
+            let detailJSON = sqlite3_column_text(statement, 4).map { String(cString: $0) } ?? "{}"
+            let detailValues = (try? JSONDecoder().decode([String: Double].self, from: Data(detailJSON.utf8))) ?? [:]
             snapshots.append(Snapshot(
                 date: String(cString: sqlite3_column_text(statement, 0)),
                 totalAssets: sqlite3_column_double(statement, 1),
                 totalLiabilities: sqlite3_column_double(statement, 2),
-                netWorth: sqlite3_column_double(statement, 3)
+                netWorth: sqlite3_column_double(statement, 3),
+                detailValues: detailValues
             ))
         }
         return snapshots
@@ -1762,6 +1800,13 @@ final class DatabaseManager {
         } catch DatabaseError.queryFailed(let message) where message.contains("duplicate column name") {
             // The column already exists in databases created by newer versions.
         }
+    }
+
+    /// Older versions allowed free-form liability categories. Keep the
+    /// liability itself and normalize the legacy computer category into the
+    /// new catch-all category used by the picker.
+    private func normalizeLegacyLiabilityCategories() throws {
+        try execute("UPDATE liabilities SET category = 'Other' WHERE LOWER(TRIM(category)) = 'computer';")
     }
 
     private func addHoldingsClassificationColumnsIfNeeded() throws {
