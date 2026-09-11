@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_NAME="FinTrack"
 PRODUCT_NAME="PersonalFinanceApp"
-VERSION="${1:-0.1.2}"
+VERSION="${1:-0.1.3}"
 BUILD_NUMBER="${BUILD_NUMBER:-${VERSION//./}}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
 ARCHS_VALUE="${ARCHS:-arm64}"
