@@ -141,3 +141,16 @@ cp "$HOME/Library/Application Support/FinTrack/personal_finance.db" \
 - 僅支援 macOS；目前發布檔僅支援 Apple Silicon
 - 測試版尚未完成 Apple Developer ID 簽章、公證與自動更新
 - 股價資料取決於外部公開 API 與支援的股票代號
+
+## 回報問題
+
+如果你發現錯誤或有不清楚的地方，請[建立 GitHub
+Issue](https://github.com/chgwyellow/personal_fin/issues/new)。
+
+如果可以，請一併提供：
+
+- FinTrack 版本與 macOS 版本
+- 發生問題的頁面或功能
+- 重現問題的操作步驟
+- 預期結果與實際結果
+- 有助於說明問題的截圖或螢幕錄影
