@@ -1264,17 +1264,19 @@ struct DashboardView: View {
                     selectedPage: $selectedPage,
                     appearanceMode: $activeAppearanceMode
                 )
-                Button {
-                    helpPage = selectedPage
-                    selectedPage = "Help"
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                        .font(.title2)
+                if selectedPage != "Help" {
+                    Button {
+                        helpPage = selectedPage
+                        selectedPage = "Help"
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                            .font(.title2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Help")
+                    .padding(.top, 14)
+                    .padding(.trailing, 20)
                 }
-                .buttonStyle(.plain)
-                .help("Help")
-                .padding(.top, 14)
-                .padding(.trailing, 20)
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
             .background(FinTrackTheme.appBackground.ignoresSafeArea())
@@ -4954,7 +4956,7 @@ struct HelpView: View {
             }
             .padding(.horizontal, 24)
             .padding(.top, 16)
-            .padding(.bottom, 8)
+            .padding(.bottom, 16)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -5087,7 +5089,7 @@ struct HelpView: View {
     }
 
     private var settingsHelp: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             helpHeader("Settings", "Adjust how FinTrack looks and behaves.")
             HelpSectionLabel(text: helpText("DISPLAY", "顯示"))
             HelpDefinitionSection(rows: [
