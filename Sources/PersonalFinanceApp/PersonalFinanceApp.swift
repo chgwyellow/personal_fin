@@ -5092,6 +5092,12 @@ struct HelpView: View {
                 (helpText("Background schedule", "背景排程"), helpText("The Mac must be powered on and FinTrack must be allowed to run in the user's active session. If the scheduled run is missed, it can be recovered when FinTrack runs again.", "Mac 必須開機，且 FinTrack 能在使用者目前的工作階段執行。若錯過排程，之後再次執行 FinTrack 時可以補回。")),
                 (helpText("Appearance", "外觀"), helpText("Choose Light, Dark, or System. System follows the Mac's current appearance setting.", "選擇淺色、深色或跟隨系統；跟隨系統會使用 Mac 目前的外觀設定。"))
             ])
+            HelpSectionLabel(text: helpText("SUPPORT & FEEDBACK", "支援與回饋"))
+            HelpDefinitionSection(rows: [
+                (helpText("Report a problem", "回報問題"), helpText("Opens GitHub to report a bug or unexpected behavior. A GitHub account is required to submit an issue.", "開啟 GitHub 回報錯誤或非預期行為；此動作需要 GitHub 帳號。")),
+                (helpText("Suggest a feature", "建議功能"), helpText("Opens GitHub to suggest an idea or improvement for FinTrack. A GitHub account is required", "開啟 GitHub 提出 FinTrack 的新功能或改進建議；此動作需要 GitHub 帳號。")),
+                (helpText("Open GitHub page", "開啟 GitHub 頁面"), helpText("Opens the FinTrack project page in your default browser.", "使用預設瀏覽器開啟 FinTrack 專案頁面。"))
+            ])
         }
     }
 
