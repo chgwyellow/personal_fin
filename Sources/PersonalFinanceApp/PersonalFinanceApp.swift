@@ -4942,18 +4942,22 @@ struct HelpView: View {
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Button(action: onBack) {
-                        Image(systemName: "chevron.left")
-                            .font(.title3.weight(.semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .help(helpText("Back", "返回"))
-                    Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.title3.weight(.semibold))
                 }
+                .buttonStyle(.plain)
+                .help(helpText("Back", "返回"))
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                 switch page {
                 case "Overview": overviewHelp
                 case "Portfolio": portfolioHelp
@@ -4964,9 +4968,11 @@ struct HelpView: View {
                 case "Settings": settingsHelp
                 default: recurringHoldingHelp
                 }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(24)
         }
     }
 
