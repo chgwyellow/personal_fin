@@ -1217,7 +1217,7 @@ enum L10n {
         "INVESTED": "投入成本", "HOLDINGS": "持有資產", "SYMBOL": "標的", "LAST": "現價",
         "CHANGE": "變化", "VALUE": "市值", "P&L": "損益", "ALLOCATION": "資產配置",
         "ASSETS": "資產", "ETFs 57%": "ETF 57%", "Stocks 43%": "股票 43%",
-        "About": "關於", "Version": "版本",
+        "About": "關於", "Version": "版本", "Support & Feedback": "支援與回饋", "Report a problem": "回報問題", "Suggest a feature": "建議功能", "Open GitHub page": "開啟 GitHub 頁面",
         "Display": "顯示", "Show detail percentage changes": "顯示明細百分比變化", "Performance colors": "漲跌顏色", "Green up / red down": "綠漲紅跌", "Red up / green down": "紅漲綠跌", "Analog mode": "類比模式", "Daily snapshot time": "每日快照時間", "Appearance": "外觀", "System": "跟隨系統", "Light": "淺色", "Dark": "深色", "Total Income": "總收入", "Total Expenses": "總支出", "Monthly Profit": "月結餘", "Account Allocation": "帳戶配置", "Account allocation will appear after leaf items are added.": "新增明細項目後，這裡會顯示帳戶配置。", "No items yet. Click + to add one.": "目前沒有項目，請按＋新增。", "Add child": "新增子項目", "Edit": "編輯", "Delete": "刪除", "Add item": "新增項目", "Edit item": "編輯項目", "Item name": "項目名稱", "Destination account (optional)": "轉入帳戶（選填）", "Use existing account": "使用既有帳戶", "No linked account": "不連結帳戶", "Leaf items can share a destination account. Parent items with children are totaled from their children.": "最底層項目可共用轉入帳戶；有子項目的父項目會依子項目加總。",
         "Turn this off to hide month-over-month percentages in asset and liability details.": "關閉後，資產與負債明細將隱藏月增減百分比。",
         "Language": "語言", "English": "英文", "Traditional Chinese": "繁體中文", "Total": "合計",
@@ -4699,7 +4699,7 @@ struct StatementCard: View {
 
     private func statementRow(_ row: StatementRow, indent: CGFloat = 0) -> AnyView {
         AnyView(
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(L10n.text(row.name, language: appLanguage))
                     Spacer()
@@ -4785,11 +4785,47 @@ struct SettingsCard: View {
             .foregroundStyle(FinTrackTheme.textPrimary)
             .tint(FinTrackTheme.textPrimary)
 
+            Divider()
+
+            Text(L10n.text("Support & Feedback", language: appLanguage))
+                .font(.title3.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 4) {
+                supportLink(
+                    title: "Report a problem",
+                    systemImage: "exclamationmark.bubble",
+                    url: "https://github.com/chgwyellow/personal_fin/issues/new?title=%5BBug%5D%20"
+                )
+                supportLink(
+                    title: "Suggest a feature",
+                    systemImage: "lightbulb",
+                    url: "https://github.com/chgwyellow/personal_fin/issues/new?title=%5BFeature%5D%20"
+                )
+                supportLink(
+                    title: "Open GitHub page",
+                    systemImage: "link",
+                    url: "https://github.com/chgwyellow/personal_fin"
+                )
+            }
+
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
         .background(FinTrackTheme.cardBackground, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(FinTrackTheme.border))
+    }
+
+    private func supportLink(title: String, systemImage: String, url: String) -> some View {
+        Link(destination: URL(string: url)!) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .frame(width: 24, height: 24)
+                Text(L10n.text(title, language: appLanguage))
+            }
+            .frame(height: 28, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .foregroundStyle(FinTrackTheme.primary)
     }
 }
 
@@ -4906,18 +4942,22 @@ struct HelpView: View {
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.english.rawValue
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Button(action: onBack) {
-                        Image(systemName: "chevron.left")
-                            .font(.title3.weight(.semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .help(helpText("Back", "返回"))
-                    Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.title3.weight(.semibold))
                 }
+                .buttonStyle(.plain)
+                .help(helpText("Back", "返回"))
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                 switch page {
                 case "Overview": overviewHelp
                 case "Portfolio": portfolioHelp
@@ -4928,9 +4968,11 @@ struct HelpView: View {
                 case "Settings": settingsHelp
                 default: recurringHoldingHelp
                 }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(24)
         }
     }
 
@@ -5055,6 +5097,12 @@ struct HelpView: View {
                 (helpText("Daily snapshot time", "每日快照時間"), helpText("Choose when FinTrack automatically records the net-worth snapshot. This setting does not define the Portfolio TODAY calculation time.", "選擇 FinTrack 自動記錄淨值快照的時間；這項設定不會決定投資組合 TODAY 的計算時間。")),
                 (helpText("Background schedule", "背景排程"), helpText("The Mac must be powered on and FinTrack must be allowed to run in the user's active session. If the scheduled run is missed, it can be recovered when FinTrack runs again.", "Mac 必須開機，且 FinTrack 能在使用者目前的工作階段執行。若錯過排程，之後再次執行 FinTrack 時可以補回。")),
                 (helpText("Appearance", "外觀"), helpText("Choose Light, Dark, or System. System follows the Mac's current appearance setting.", "選擇淺色、深色或跟隨系統；跟隨系統會使用 Mac 目前的外觀設定。"))
+            ])
+            HelpSectionLabel(text: helpText("SUPPORT & FEEDBACK", "支援與回饋"))
+            HelpDefinitionSection(rows: [
+                (helpText("Report a problem", "回報問題"), helpText("Opens GitHub to report a bug or unexpected behavior. A GitHub account is required to submit an issue.", "開啟 GitHub 回報錯誤或非預期行為；此動作需要 GitHub 帳號。")),
+                (helpText("Suggest a feature", "建議功能"), helpText("Opens GitHub to suggest an idea or improvement for FinTrack. A GitHub account is required", "開啟 GitHub 提出 FinTrack 的新功能或改進建議；此動作需要 GitHub 帳號。")),
+                (helpText("Open GitHub page", "開啟 GitHub 頁面"), helpText("Opens the FinTrack project page in your default browser.", "使用預設瀏覽器開啟 FinTrack 專案頁面。"))
             ])
         }
     }
