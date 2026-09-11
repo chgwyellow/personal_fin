@@ -1264,17 +1264,19 @@ struct DashboardView: View {
                     selectedPage: $selectedPage,
                     appearanceMode: $activeAppearanceMode
                 )
-                Button {
-                    helpPage = selectedPage
-                    selectedPage = "Help"
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                        .font(.title2)
+                if selectedPage != "Help" {
+                    Button {
+                        helpPage = selectedPage
+                        selectedPage = "Help"
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                            .font(.title2)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Help")
+                    .padding(.top, 14)
+                    .padding(.trailing, 20)
                 }
-                .buttonStyle(.plain)
-                .help("Help")
-                .padding(.top, 14)
-                .padding(.trailing, 20)
             }
             .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
             .background(FinTrackTheme.appBackground.ignoresSafeArea())
@@ -4837,6 +4839,7 @@ private struct HelpSectionLabel: View {
             .font(.caption.weight(.bold))
             .foregroundStyle(FinTrackTheme.textMuted)
             .tracking(0.8)
+            .padding(.bottom, -8)
     }
 }
 
@@ -4954,7 +4957,7 @@ struct HelpView: View {
             }
             .padding(.horizontal, 24)
             .padding(.top, 16)
-            .padding(.bottom, 8)
+            .padding(.bottom, 16)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -4990,7 +4993,7 @@ struct HelpView: View {
     }
 
     private var portfolioHelp: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             helpHeader("Portfolio", "See how your investments are distributed and performing.")
             HelpSectionLabel(text: helpText("AT A GLANCE", "快速了解"))
             HelpDefinitionSection(rows: [
@@ -5013,7 +5016,7 @@ struct HelpView: View {
     }
 
     private var dividendsHelp: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             helpHeader("Dividends", "Review dividend income from your holdings.")
             HelpSectionLabel(text: helpText("WHAT YOU SEE", "這裡會顯示什麼"))
             HelpIntroCard(title: helpText("Dividend records", "股利紀錄"), description: helpText("Each row shows the security, the date you received the dividend, and the amount received. Values are kept in their original currency.", "每一列會顯示標的、你收到股利的日期與收到的金額，並保留原始幣別。"))
@@ -5027,7 +5030,7 @@ struct HelpView: View {
     }
 
     private var recurringHelp: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             helpHeader("Recurring Investment", "Plan recurring purchases and keep each purchase record in one place.")
             HelpSectionLabel(text: helpText("START HERE", "從這裡開始"))
             HelpIntroCard(title: helpText("A plan and its actual purchases", "計畫與實際投資"), description: helpText("A recurring rule describes when and how much you plan to invest. The purchase records below it are the transactions that actually happened.", "定期定額規則描述預計何時、投入多少；下方投資紀錄則是實際發生的每一筆交易。"))
@@ -5043,7 +5046,7 @@ struct HelpView: View {
     }
 
     private var recurringHoldingHelp: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             helpHeader("Recurring Investment", "View this recurring investment's purchase history.")
             HelpSectionLabel(text: helpText("THIS INVESTMENT", "這項投資"))
             HelpIntroCard(title: helpText("Schedules and purchases", "排程與投資紀錄"), description: helpText("Schedules show your plan. Purchases show what you actually invested, including the date, shares, and amount.", "排程顯示你的計畫；投資紀錄顯示實際投入的日期、股數與金額。"))
@@ -5057,7 +5060,7 @@ struct HelpView: View {
     }
 
     private var foreignCurrencyHelp: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             helpHeader("Foreign Currency", "Track foreign-currency balances, rates, and transactions.")
             HelpSectionLabel(text: helpText("BALANCES", "餘額"))
             HelpDefinitionSection(rows: [
@@ -5072,7 +5075,7 @@ struct HelpView: View {
     }
 
     private var incomeStatementHelp: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             helpHeader("Income Statement", "Organize income, expenses, and savings in one view.")
             HelpSectionLabel(text: helpText("THE BIG PICTURE", "整體概況"))
             HelpDefinitionSection(rows: [
@@ -5087,7 +5090,7 @@ struct HelpView: View {
     }
 
     private var settingsHelp: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             helpHeader("Settings", "Adjust how FinTrack looks and behaves.")
             HelpSectionLabel(text: helpText("DISPLAY", "顯示"))
             HelpDefinitionSection(rows: [
@@ -5108,7 +5111,7 @@ struct HelpView: View {
     }
 
     private var overviewHelp: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             Text(L10n.text("Overview", language: appLanguage))
                 .font(.title2.weight(.bold))
             Text(L10n.text("Understand your overall financial position.", language: appLanguage))
