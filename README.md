@@ -179,3 +179,16 @@ Scheduled snapshots run while the Mac is available to run the app.
   automatic updater
 - Market-data availability depends on external public APIs and supported
   symbols
+
+## Report a problem
+
+If you find a bug or something that is unclear, please [open a GitHub
+Issue](https://github.com/chgwyellow/personal_fin/issues/new).
+
+When possible, include:
+
+- The FinTrack version and macOS version
+- The page or feature where the problem occurred
+- Steps to reproduce the problem
+- The expected result and what actually happened
+- A screenshot or screen recording, if it helps explain the problem
